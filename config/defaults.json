@@ -1,0 +1,34 @@
+{
+  "video": {
+    "default_codec": "libx264",
+    "default_crf": 23,
+    "default_preset": "medium",
+    "default_format": "mp4",
+    "default_fps": null,
+    "default_resolution": "Original"
+  },
+  "audio": {
+    "default_codec": "copy",
+    "strip_audio": false
+  },
+  "compression": {
+    "use_smart_compression": false
+  },
+  "interpolation": {
+    "enabled": false,
+    "mode": "2x"
+  },
+  "upscaling": {
+    "enabled": false,
+    "method": "lanczos",
+    "preset": null
+  },
+  "output": {
+    "folder": null,
+    "suffix": "_compressed",
+    "overwrite_existing": false
+  },
+  "queue": {
+    "max_parallel_jobs": 1
+  }
+}

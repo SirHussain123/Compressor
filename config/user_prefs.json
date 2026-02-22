@@ -1,0 +1,6 @@
+{
+  "_comment": "User preferences — overrides defaults.json. Managed by the app at runtime.",
+  "output": {
+    "folder": null
+  }
+}

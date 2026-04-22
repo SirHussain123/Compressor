@@ -11,6 +11,16 @@ from ui.startup_screen import StartupScreen
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 
+def center_on_primary_screen(widget, app: QApplication):
+    screen = app.primaryScreen()
+    if screen is None:
+        return
+    available = screen.availableGeometry()
+    frame = widget.frameGeometry()
+    frame.moveCenter(available.center())
+    widget.move(frame.topLeft())
+
+
 def main():
     setup_logging()
 
@@ -23,6 +33,7 @@ def main():
             app.setStyleSheet(f.read())
 
     splash = StartupScreen()
+    center_on_primary_screen(splash, app)
     splash.show()
     app.processEvents()
 
@@ -36,6 +47,7 @@ def main():
 
     def finish_startup():
         splash.close()
+        center_on_primary_screen(window, app)
         window.show()
 
     QTimer.singleShot(120, finish_startup)

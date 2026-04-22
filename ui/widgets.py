@@ -4,12 +4,17 @@ widgets.py
 Shared custom widgets and effects for the UI layer.
 """
 
-from PyQt6.QtCore import QEasingCurve, QElapsedTimer, QPoint, QPointF, QRectF, Qt, QTimer
+from PyQt6.QtCore import QEasingCurve, QElapsedTimer, QEvent, QPoint, QPointF, QRect, QRectF, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPen, QPolygonF
 from PyQt6.QtWidgets import (
+    QApplication,
     QComboBox,
+    QFrame,
     QGraphicsDropShadowEffect,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
+    QVBoxLayout,
     QWidget,
 )
 
@@ -32,27 +37,94 @@ class ConsistentComboBox(QComboBox):
         self.setFrame(False)
         self.setMouseTracking(True)
         self._hover_locked = False
+        self._swallow_release = False
+        self._popup_event_filter_installed = False
+        self._popup = _ComboPopup(self)
+        self._popup.item_chosen.connect(self._apply_popup_index)
 
     def showPopup(self):
         self._hover_locked = False
-        super().showPopup()
-        popup = self.view().window()
-        if popup is not None:
-            popup.setObjectName("comboPopup")
-            popup.setMinimumWidth(self.width())
-            popup.setContentsMargins(0, 0, 0, 0)
-            popup.move(self.mapToGlobal(QPoint(0, self.height())))
-            popup.setStyleSheet("background: transparent; border: none;")
-            self.view().setContentsMargins(0, 0, 0, 0)
+        self._popup.populate_from_combo(self)
+        popup_width = max(self.width(), self._popup.sizeHint().width())
+        popup_height = self._popup.preferred_height()
+        self._popup.setFixedSize(popup_width, popup_height)
+        self._popup.move(self.mapToGlobal(QPoint(0, self.height() + 6)))
+        self._install_popup_event_filter()
+        self._popup.show()
+        self._popup.raise_()
         self.update()
 
     def hidePopup(self):
-        super().hidePopup()
+        self._popup.hide()
+        self._remove_popup_event_filter()
         self._hover_locked = True
         self.update()
 
+    def _install_popup_event_filter(self):
+        if self._popup_event_filter_installed:
+            return
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
+            self._popup_event_filter_installed = True
+
+    def _remove_popup_event_filter(self):
+        if not self._popup_event_filter_installed:
+            return
+        app = QApplication.instance()
+        if app is not None:
+            app.removeEventFilter(self)
+        self._popup_event_filter_installed = False
+
+    def _global_combo_rect(self) -> QRect:
+        top_left = self.mapToGlobal(self.rect().topLeft())
+        return QRect(top_left, self.rect().size())
+
+    def eventFilter(self, watched, event):
+        if not self._popup.isVisible():
+            return super().eventFilter(watched, event)
+
+        if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
+            global_pos = event.globalPosition().toPoint()
+            if self._global_combo_rect().contains(global_pos):
+                self._swallow_release = True
+                self.hidePopup()
+                event.accept()
+                return True
+
+        if event.type() == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
+            if self._swallow_release:
+                self._swallow_release = False
+                event.accept()
+                return True
+
+        return super().eventFilter(watched, event)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self.rect().contains(event.position().toPoint()):
+                self.setFocus(Qt.FocusReason.MouseFocusReason)
+                if self._popup.isVisible():
+                    self._swallow_release = True
+                    self.hidePopup()
+                else:
+                    self.showPopup()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self._swallow_release:
+                self._swallow_release = False
+                event.accept()
+                return
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
     def enterEvent(self, event):
-        if not self.view().isVisible() and not self._hover_locked:
+        if not self._popup.isVisible() and not self._hover_locked:
             self.update()
         super().enterEvent(event)
 
@@ -69,7 +141,7 @@ class ConsistentComboBox(QComboBox):
 
         rect = self.rect().adjusted(0, 0, -1, -1)
         radius = 10.0
-        is_popup_open = self.view().isVisible()
+        is_popup_open = self._popup.isVisible()
         is_hover = self.underMouse() and not self._hover_locked and not is_popup_open
         is_active = is_popup_open or self.hasFocus() or is_hover
 
@@ -111,6 +183,64 @@ class ConsistentComboBox(QComboBox):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(arrow)
         painter.drawPolygon(arrow_points)
+
+    def _apply_popup_index(self, index: int):
+        self.setCurrentIndex(index)
+        self.hidePopup()
+
+
+class _ComboPopup(QFrame):
+    item_chosen = pyqtSignal(int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
+        self.setObjectName("comboPopup")
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(0)
+
+        self._list = QListWidget()
+        self._list.setObjectName("comboListWidget")
+        self._list.setFrameShape(QFrame.Shape.NoFrame)
+        self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._list.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
+        self._list.setSpacing(0)
+        self._list.viewport().setObjectName("comboListViewport")
+        self._list.setAutoFillBackground(False)
+        self._list.viewport().setAutoFillBackground(False)
+        self._list.itemClicked.connect(self._on_item_clicked)
+        layout.addWidget(self._list)
+
+    def populate_from_combo(self, combo: QComboBox):
+        self._list.clear()
+        for idx in range(combo.count()):
+            item = QListWidgetItem(combo.itemText(idx))
+            item.setData(Qt.ItemDataRole.UserRole, idx)
+            self._list.addItem(item)
+
+        current_row = max(0, combo.currentIndex())
+        if self._list.count():
+            self._list.setCurrentRow(current_row)
+
+    def preferred_height(self) -> int:
+        rows = min(self._list.count(), 8)
+        row_height = self._list.sizeHintForRow(0) if self._list.count() else 32
+        content_height = (row_height * rows) + max(0, rows - 1) * self._list.spacing()
+        return content_height + 20
+
+    def _on_item_clicked(self, item: QListWidgetItem):
+        index = item.data(Qt.ItemDataRole.UserRole)
+        self.item_chosen.emit(index)
+
+    def hideEvent(self, event):
+        parent = self.parentWidget()
+        if isinstance(parent, ConsistentComboBox):
+            parent._hover_locked = True
+            parent.update()
+        super().hideEvent(event)
 
 
 class NavButton(QPushButton):

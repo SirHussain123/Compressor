@@ -213,51 +213,45 @@ QComboBox:on::down-arrow {
     border-top-color: #f8f8f6;
 }
 
-QComboBox QAbstractItemView {
+QFrame#comboPopup {
     background-color: #2c2c2a;
-    color: #f8f8f6;
     border: 1px solid #2c2c2c;
-    border-radius: 10px;
-    outline: 0;
-    padding: 4px;
-    selection-background-color: #313131;
-    selection-color: #f8f8f6;
-    show-decoration-selected: 0;
+    border-radius: 14px;
 }
 
-QComboBox QAbstractItemView::item {
-    color: #f8f8f6;
-    padding: 8px 10px;
-    border-radius: 8px;
-    min-height: 22px;
+QListWidget#comboListWidget {
+    background-color: transparent;
     border: none;
-    margin: 2px 4px;
+    outline: 0;
+    color: #f8f8f6;
+    padding: 0;
+}
+
+QWidget#comboListViewport {
+    background-color: transparent;
+    border: none;
+}
+
+QListWidget#comboListWidget::item {
+    color: #f8f8f6;
+    padding: 8px 14px;
+    margin: 1px 0;
+    border: none;
+    border-radius: 10px;
     background: transparent;
 }
 
-QComboBox QAbstractItemView::item:hover {
+QListWidget#comboListWidget::item:hover {
     background-color: #313131;
     color: #f8f8f6;
+    border-radius: 10px;
 }
 
-QComboBox QAbstractItemView::item:selected,
-QComboBox QAbstractItemView::item:selected:active,
-QComboBox QAbstractItemView::item:selected:!active {
+QListWidget#comboListWidget::item:selected {
     background-color: #171716;
     color: #f8f8f6;
     border: none;
-    border-radius: 8px;
-}
-
-QComboBox QListView,
-QComboBox QFrame {
-    outline: 0;
-    border: none;
-}
-
-QWidget#comboPopup {
-    background: transparent;
-    border: none;
+    border-radius: 10px;
 }
 
 QAbstractSpinBox::up-button,

@@ -48,6 +48,7 @@ class VideoJob:
     target_fps:       Optional[float] = None
 
     # --- Compression (always size-based) ---
+    compress_enabled: bool            = True
     size_mode:        SizeMode        = SizeMode.PERCENT
     size_value:       float           = 50.0   # % or MB depending on size_mode
 
@@ -55,13 +56,17 @@ class VideoJob:
     video_codec:      Optional[str]   = None
     audio_codec:      Optional[str]   = None
     preset:           Optional[str]   = "medium"
+    crf:              Optional[int]   = None
+    bitrate_kbps:     Optional[int]   = None
     strip_audio:      bool            = False
     cpu_load:         str             = "Balanced"
 
     # --- Frame interpolation ---
+    interpolation_enabled: bool = False
     interpolation_mode: InterpolationMode = InterpolationMode.NONE
 
     # --- Upscaling ---
+    upscale_enabled:  bool            = False
     upscale_mode:     UpscaleMode     = UpscaleMode.NONE
     upscale_width:    Optional[int]   = None
     upscale_height:   Optional[int]   = None

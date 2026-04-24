@@ -139,6 +139,9 @@ class UpscalePanel(QWidget):
         else:
             self._engine.apply_lanczos(job, self._custom_w.value(), self._custom_h.value())
 
+    def is_enabled(self) -> bool:
+        return self._enable_check.isChecked()
+
     def populate_from_job(self, job: VideoJob):
         active = job.upscale_mode != UpscaleMode.NONE
         self._enable_check.setChecked(active)

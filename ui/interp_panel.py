@@ -87,6 +87,9 @@ class InterpPanel(QWidget):
         else:
             self._engine.disable(job)
 
+    def is_enabled(self) -> bool:
+        return self._enable_check.isChecked()
+
     def populate_from_job(self, job: VideoJob):
         is_active = job.interpolation_mode != InterpolationMode.NONE
         self._enable_check.setChecked(is_active)

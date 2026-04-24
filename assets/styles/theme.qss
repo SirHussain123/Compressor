@@ -145,6 +145,7 @@ QComboBox {
     font-size: 12px;
     selection-background-color: #444341;
     selection-color: #f8f8f6;
+    outline: none;
 }
 
 QLineEdit:hover,
@@ -197,6 +198,7 @@ QComboBox::drop-down {
     width: 20px;
     background: transparent;
     subcontrol-position: right center;
+    outline: none;
 }
 
 QComboBox::down-arrow {
@@ -225,6 +227,16 @@ QListWidget#comboListWidget {
     outline: 0;
     color: #f8f8f6;
     padding: 0;
+}
+
+QAbstractItemView {
+    outline: none;
+    selection-background-color: #171716;
+    selection-color: #f8f8f6;
+}
+
+QAbstractItemView:focus {
+    outline: none;
 }
 
 QWidget#comboListViewport {

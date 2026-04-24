@@ -1,26 +1,41 @@
 """
 basic_settings.py
 -----------------
-Settings tab: global compression default + output options.
+Settings tab: global compression defaults and output options.
 The global default pre-fills each new job row but can be overridden per-row.
 """
 
-from PyQt6.QtWidgets import (
-    QWidget, QFormLayout, QComboBox, QSpinBox, QDoubleSpinBox,
-    QLineEdit, QPushButton, QHBoxLayout, QLabel,
-    QButtonGroup, QRadioButton, QGroupBox, QVBoxLayout
-)
 from PyQt6.QtCore import pyqtSignal
-from core.video_job import VideoJob, SizeMode
+from PyQt6.QtWidgets import (
+    QButtonGroup,
+    QDoubleSpinBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QRadioButton,
+    QSpinBox,
+    QVBoxLayout,
+    QWidget,
+)
+
+from core.video_job import SizeMode, VideoJob
 from ui.widgets import ConsistentComboBox, apply_surface_shadow
 
 
 COMMON_RESOLUTIONS = [
-    "Original", "3840x2160 (4K)", "2560x1440 (1440p)",
-    "1920x1080 (1080p)", "1280x720 (720p)", "854x480 (480p)", "Custom"
+    "Original",
+    "3840x2160 (4K)",
+    "2560x1440 (1440p)",
+    "1920x1080 (1080p)",
+    "1280x720 (720p)",
+    "854x480 (480p)",
+    "Custom",
 ]
 OUTPUT_FORMATS = ["mp4", "mkv", "avi", "mov", "webm", "flv", "wmv"]
-FPS_ORIGINAL   = 0.0
+FPS_ORIGINAL = 0.0
 
 
 class BasicSettingsPanel(QWidget):
@@ -38,10 +53,6 @@ class BasicSettingsPanel(QWidget):
         root.addWidget(self._make_output_group())
         root.addStretch()
 
-    # ------------------------------------------------------------------
-    # Default compression group
-    # ------------------------------------------------------------------
-
     def _make_default_group(self) -> QGroupBox:
         box = QGroupBox("Default Compression (applied to each new file)")
         apply_surface_shadow(box, blur=24.0, offset_y=5.0)
@@ -55,21 +66,19 @@ class BasicSettingsPanel(QWidget):
         note.setObjectName("metaLabel")
         layout.addWidget(note)
 
-        # Mode radio
         mode_row = QHBoxLayout()
         self._pct_radio = QRadioButton("Percentage reduction")
-        self._mb_radio  = QRadioButton("Target size (MB)")
+        self._mb_radio = QRadioButton("Target size (MB)")
         self._pct_radio.setChecked(True)
         self._mode_group = QButtonGroup()
         self._mode_group.addButton(self._pct_radio, 0)
-        self._mode_group.addButton(self._mb_radio,  1)
+        self._mode_group.addButton(self._mb_radio, 1)
         self._mode_group.buttonClicked.connect(self._on_mode_changed)
         mode_row.addWidget(self._pct_radio)
         mode_row.addWidget(self._mb_radio)
         mode_row.addStretch()
         layout.addLayout(mode_row)
 
-        # Value row
         value_row = QHBoxLayout()
 
         self._pct_spin = QDoubleSpinBox()
@@ -80,7 +89,7 @@ class BasicSettingsPanel(QWidget):
         self._pct_spin.setFixedWidth(130)
         self._pct_spin.setToolTip(
             "Each new file will default to this percentage reduction.\n"
-            "50% = output is half the original size."
+            "50% means the output is half the original size."
         )
         self._pct_spin.valueChanged.connect(self.settings_changed)
 
@@ -101,10 +110,6 @@ class BasicSettingsPanel(QWidget):
 
         return box
 
-    # ------------------------------------------------------------------
-    # Output group
-    # ------------------------------------------------------------------
-
     def _make_output_group(self) -> QGroupBox:
         box = QGroupBox("Output")
         apply_surface_shadow(box, blur=24.0, offset_y=5.0)
@@ -112,6 +117,7 @@ class BasicSettingsPanel(QWidget):
         form.setSpacing(8)
 
         self._format_combo = ConsistentComboBox()
+        self._format_combo.addItem("original")
         self._format_combo.addItems(OUTPUT_FORMATS)
         self._format_combo.setToolTip("Output container format")
         self._format_combo.currentIndexChanged.connect(self.settings_changed)
@@ -136,12 +142,12 @@ class BasicSettingsPanel(QWidget):
         self._custom_h.setValue(1080)
         self._custom_h.setSuffix(" px")
         cl.addWidget(self._custom_w)
-        cl.addWidget(QLabel("×"))
+        cl.addWidget(QLabel("x"))
         cl.addWidget(self._custom_h)
         cl.addStretch()
         self._custom_res_widget = custom_row
         self._custom_res_widget.setVisible(False)
-        form.addRow("Custom (W×H):", self._custom_res_widget)
+        form.addRow("Custom (W x H):", self._custom_res_widget)
 
         self._fps_spin = QDoubleSpinBox()
         self._fps_spin.setRange(FPS_ORIGINAL, 240.0)
@@ -150,13 +156,14 @@ class BasicSettingsPanel(QWidget):
         self._fps_spin.setDecimals(3)
         self._fps_spin.setSuffix(" fps")
         self._fps_spin.setSpecialValueText("Original")
-        self._fps_spin.setToolTip("Leave at Original to keep source frame rate.")
+        self._fps_spin.setToolTip("Leave at Original to keep the source frame rate.")
         self._fps_spin.valueChanged.connect(self.settings_changed)
+        self._fps_spin.lineEdit().editingFinished.connect(self._normalize_fps_input)
         form.addRow("Frame Rate:", self._fps_spin)
 
         self._output_edit = QLineEdit()
         self._output_edit.setPlaceholderText("Same folder as source")
-        browse_btn = QPushButton("Browse…")
+        browse_btn = QPushButton("Browse...")
         browse_btn.setFixedWidth(80)
         browse_btn.clicked.connect(self._browse_output)
         path_row = QWidget()
@@ -169,10 +176,6 @@ class BasicSettingsPanel(QWidget):
 
         return box
 
-    # ------------------------------------------------------------------
-    # Slots
-    # ------------------------------------------------------------------
-
     def _on_mode_changed(self):
         is_pct = self._pct_radio.isChecked()
         self._pct_spin.setVisible(is_pct)
@@ -180,21 +183,21 @@ class BasicSettingsPanel(QWidget):
         self.settings_changed.emit()
 
     def _on_resolution_changed(self):
-        self._custom_res_widget.setVisible(
-            self._resolution_combo.currentText() == "Custom"
-        )
+        self._custom_res_widget.setVisible(self._resolution_combo.currentText() == "Custom")
         self.settings_changed.emit()
 
     def _browse_output(self):
         from PyQt6.QtWidgets import QFileDialog
+
         folder = QFileDialog.getExistingDirectory(self, "Select Output Folder")
         if folder:
             self._output_edit.setText(folder)
             self.settings_changed.emit()
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+    def _normalize_fps_input(self):
+        if not self._fps_spin.text().strip():
+            self._fps_spin.setValue(FPS_ORIGINAL)
+            self.settings_changed.emit()
 
     def get_default_mode(self) -> SizeMode:
         return SizeMode.PERCENT if self._pct_radio.isChecked() else SizeMode.MB
@@ -205,27 +208,43 @@ class BasicSettingsPanel(QWidget):
         return self._mb_spin.value()
 
     def get_output_folder(self) -> str | None:
-        t = self._output_edit.text().strip()
-        return t if t else None
+        text = self._output_edit.text().strip()
+        return text if text else None
 
     def get_output_format(self) -> str:
         return self._format_combo.currentText()
 
     def apply_to_job(self, job: VideoJob):
         """Apply output settings (format, resolution, fps) to a job."""
-        job.output_format = self._format_combo.currentText()
+        output_format = self._format_combo.currentText()
+        if output_format == "original":
+            job.output_format = self._infer_source_format(job)
+        else:
+            job.output_format = output_format
+        job.target_width = None
+        job.target_height = None
 
-        res = self._resolution_combo.currentText()
-        if res == "Custom":
-            job.target_width  = self._custom_w.value()
+        resolution = self._resolution_combo.currentText()
+        if resolution == "Custom":
+            job.target_width = self._custom_w.value()
             job.target_height = self._custom_h.value()
-        elif res != "Original":
+        elif resolution != "Original":
             try:
-                dims = res.split(" ")[0].split("x")
-                job.target_width  = int(dims[0])
+                dims = resolution.split(" ")[0].split("x")
+                job.target_width = int(dims[0])
                 job.target_height = int(dims[1])
             except (IndexError, ValueError):
-                pass
+                job.target_width = None
+                job.target_height = None
 
         fps = self._fps_spin.value()
         job.target_fps = fps if fps > FPS_ORIGINAL else None
+
+    def _infer_source_format(self, job: VideoJob) -> str:
+        meta = job.source_metadata
+        if meta and meta.format_name:
+            format_names = [part.strip().lower() for part in meta.format_name.split(",")]
+            for candidate in OUTPUT_FORMATS:
+                if candidate in format_names:
+                    return candidate
+        return "mp4"

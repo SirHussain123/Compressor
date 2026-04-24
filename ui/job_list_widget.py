@@ -1,12 +1,13 @@
 """
 job_list_widget.py
 ------------------
-Queue of VideoJob rows with inline compression target controls.
+Queue of VideoJob rows with compact workflow summaries and expandable controls.
 """
 
 from PyQt6.QtCore import QRegularExpression, Qt, pyqtSignal
 from PyQt6.QtGui import QRegularExpressionValidator
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -19,7 +20,9 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from core.compression import CompressionEngine, CompressionLimits
 from core.video_job import JobStatus, SizeMode, VideoJob
+from ui.compression_shortcuts import SHORTCUT_PRESETS
 from ui.widgets import ConsistentComboBox
 
 
@@ -35,6 +38,7 @@ PROGRESS_CHUNK_RUNNING = "QProgressBar::chunk { background-color: #cc7a2f; borde
 PROGRESS_CHUNK_DONE = "QProgressBar::chunk { background-color: #4d8b57; border-radius: 0; }"
 PROGRESS_CHUNK_FAILED = "QProgressBar::chunk { background-color: #c24f42; border-radius: 0; }"
 PROGRESS_CHUNK_CANCELLED = "QProgressBar::chunk { background-color: #b7882c; border-radius: 0; }"
+MAX_NAME_CHARS = 34
 
 
 class JobRowWidget(QWidget):
@@ -49,10 +53,23 @@ class JobRowWidget(QWidget):
     ):
         super().__init__(parent)
         self.job = job
+        self._compression_engine = CompressionEngine()
+        self._limits = self._build_limits()
+        self._details_expanded = False
         self.setObjectName("jobRow")
-        self.setFixedHeight(72)
         self._build_ui(default_mode, default_value)
         self._sync_to_job()
+        self._refresh_summary()
+        self._refresh_detail_visibility()
+
+    def _build_limits(self) -> CompressionLimits | None:
+        meta = self.job.source_metadata
+        if not meta:
+            return None
+        try:
+            return self._compression_engine.get_limits(meta)
+        except ValueError:
+            return None
 
     def _build_ui(self, default_mode: SizeMode, default_value: float):
         outer = QVBoxLayout(self)
@@ -60,25 +77,111 @@ class JobRowWidget(QWidget):
         outer.setSpacing(0)
 
         content = QWidget()
-        top = QHBoxLayout(content)
-        top.setContentsMargins(16, 12, 14, 12)
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(16, 12, 14, 12)
+        content_layout.setSpacing(8)
+
+        top = QHBoxLayout()
         top.setSpacing(10)
 
         info = QVBoxLayout()
         info.setSpacing(4)
 
-        self._name_label = QLabel(self.job.display_name())
+        full_name = self.job.display_name()
+        truncated_name = self._truncate_name(full_name)
+        self._name_label = QLabel(truncated_name)
         self._name_label.setObjectName("jobName")
         self._name_label.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
+        self._name_label.setToolTip(full_name if truncated_name != full_name else "")
 
         self._meta_label = QLabel(self._build_meta())
         self._meta_label.setObjectName("jobMeta")
 
         info.addWidget(self._name_label)
         info.addWidget(self._meta_label)
-        top.addLayout(info)
+        top.addLayout(info, 1)
+
+        right = QVBoxLayout()
+        right.setSpacing(4)
+
+        self._summary_label = QLabel("")
+        self._summary_label.setObjectName("jobMeta")
+        self._summary_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+
+        actions = QHBoxLayout()
+        actions.setSpacing(8)
+
+        self._toggle_btn = QPushButton("Workflow")
+        self._toggle_btn.setFixedHeight(28)
+        self._toggle_btn.clicked.connect(self._toggle_details)
+
+        self._status_label = QLabel("Pending")
+        self._status_label.setObjectName("jobStatus")
+        self._status_label.setFixedWidth(84)
+        self._status_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        self._status_label.setStyleSheet(
+            "color: #8c7b6b; font-size: 11px; font-weight: 600;"
+        )
+
+        self._remove_btn = QPushButton("x")
+        self._remove_btn.setObjectName("removeButton")
+        self._remove_btn.setFixedSize(24, 24)
+        self._remove_btn.setToolTip("Remove from queue")
+        self._remove_btn.clicked.connect(lambda: self.remove_requested.emit(self.job))
+
+        actions.addWidget(self._toggle_btn)
+        actions.addWidget(self._status_label)
+        actions.addWidget(self._remove_btn)
+
+        right.addWidget(self._summary_label)
+        right.addLayout(actions)
+        top.addLayout(right)
+
+        content_layout.addLayout(top)
+
+        self._details_widget = QWidget()
+        details = QVBoxLayout(self._details_widget)
+        details.setContentsMargins(0, 2, 0, 0)
+        details.setSpacing(8)
+
+        workflow_row = QHBoxLayout()
+        workflow_row.setSpacing(12)
+
+        self._compress_check = QCheckBox("Compress")
+        self._compress_check.setChecked(self.job.compress_enabled)
+        self._compress_check.stateChanged.connect(self._on_workflow_changed)
+        self._upscale_check = QCheckBox("Upscale")
+        self._upscale_check.setChecked(self.job.upscale_enabled)
+        self._upscale_check.stateChanged.connect(self._on_workflow_changed)
+        self._interp_check = QCheckBox("Frame Gen")
+        self._interp_check.setChecked(self.job.interpolation_enabled)
+        self._interp_check.stateChanged.connect(self._on_workflow_changed)
+
+        workflow_row.addWidget(self._compress_check)
+        workflow_row.addWidget(self._upscale_check)
+        workflow_row.addWidget(self._interp_check)
+        workflow_row.addStretch()
+        details.addLayout(workflow_row)
+
+        self._compression_controls = QWidget()
+        compression_layout = QHBoxLayout(self._compression_controls)
+        compression_layout.setContentsMargins(0, 0, 0, 0)
+        compression_layout.setSpacing(8)
+
+        self._shortcut_combo = ConsistentComboBox()
+        self._shortcut_combo.addItems(list(SHORTCUT_PRESETS.keys()))
+        self._shortcut_combo.setFixedWidth(126)
+        self._shortcut_combo.setFixedHeight(30)
+        self._shortcut_combo.setToolTip(
+            "Quick app target. Choose Custom to edit the size manually."
+        )
+        self._shortcut_combo.currentIndexChanged.connect(self._on_shortcut_changed)
 
         self._mode_combo = ConsistentComboBox()
         self._mode_combo.addItem("%", SizeMode.PERCENT)
@@ -100,27 +203,16 @@ class JobRowWidget(QWidget):
         self._value_input.textChanged.connect(self._sync_to_job)
         self._apply_mode_range(default_mode, default_value)
 
-        self._status_label = QLabel("Pending")
-        self._status_label.setObjectName("jobStatus")
-        self._status_label.setFixedWidth(84)
-        self._status_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
-        self._status_label.setStyleSheet(
-            "color: #8c7b6b; font-size: 11px; font-weight: 600;"
-        )
+        self._compression_hint = QLabel("")
+        self._compression_hint.setObjectName("jobMeta")
 
-        self._remove_btn = QPushButton("x")
-        self._remove_btn.setObjectName("removeButton")
-        self._remove_btn.setFixedSize(24, 24)
-        self._remove_btn.setToolTip("Remove from queue")
-        self._remove_btn.clicked.connect(lambda: self.remove_requested.emit(self.job))
+        compression_layout.addWidget(self._shortcut_combo)
+        compression_layout.addWidget(self._mode_combo)
+        compression_layout.addWidget(self._value_input)
+        compression_layout.addWidget(self._compression_hint, 1)
+        details.addWidget(self._compression_controls)
 
-        top.addWidget(self._mode_combo)
-        top.addWidget(self._value_input)
-        top.addWidget(self._status_label)
-        top.addWidget(self._remove_btn)
-
+        content_layout.addWidget(self._details_widget)
         outer.addWidget(content)
 
         self._progress_bar = QProgressBar()
@@ -134,6 +226,11 @@ class JobRowWidget(QWidget):
         )
         outer.addWidget(self._progress_bar)
 
+    def _truncate_name(self, name: str) -> str:
+        if len(name) <= MAX_NAME_CHARS:
+            return name
+        return f"{name[:MAX_NAME_CHARS - 1]}..."
+
     def _build_meta(self) -> str:
         meta = self.job.source_metadata
         if not meta:
@@ -142,14 +239,58 @@ class JobRowWidget(QWidget):
         mb = meta.file_size / (1024 * 1024) if meta.file_size else 0
         return f"{meta.width}x{meta.height}  {fps} fps  {meta.codec_name.upper()}  {mb:.1f} MB"
 
+    def _build_summary(self) -> str:
+        parts: list[str] = []
+        if self.job.compress_enabled:
+            unit = "%" if self.job.size_mode == SizeMode.PERCENT else "MB"
+            value = (
+                f"{int(self.job.size_value)}"
+                if self.job.size_value == int(self.job.size_value)
+                else f"{self.job.size_value:.1f}"
+            )
+            parts.append(f"Compress {value} {unit}")
+        if self.job.upscale_enabled:
+            parts.append("Upscale")
+        if self.job.interpolation_enabled:
+            parts.append("Frame Gen")
+        if not parts:
+            return "No workflow selected"
+        return " + ".join(parts)
+
+    def _refresh_summary(self):
+        self._summary_label.setText(self._build_summary())
+
+    def _toggle_details(self):
+        self._details_expanded = not self._details_expanded
+        self._refresh_detail_visibility()
+
+    def _refresh_detail_visibility(self):
+        if not hasattr(self, "_details_widget"):
+            return
+        self._details_widget.setVisible(self._details_expanded)
+        self._toggle_btn.setText("Hide" if self._details_expanded else "Workflow")
+        if hasattr(self, "_compression_controls"):
+            self._compression_controls.setVisible(self._compress_check.isChecked())
+        self._refresh_compression_hint()
+
+    def _refresh_compression_hint(self):
+        if not hasattr(self, "_compression_hint"):
+            return
+        if not self._compress_check.isChecked():
+            self._compression_hint.setText("")
+            return
+        if self._current_mode() == SizeMode.PERCENT:
+            floor = self._limits.max_reduction_pct if self._limits else 99.0
+            self._compression_hint.setText(f"Decoder floor: about {floor:.0f}% max reduction")
+        else:
+            floor = self._limits.min_target_mb if self._limits else 0.1
+            self._compression_hint.setText(f"Decoder floor: about {floor:.1f} MB")
+
     def _apply_mode_range(self, mode: SizeMode, value: float):
         self._value_input.blockSignals(True)
         if mode == SizeMode.PERCENT:
             self._value_input.setPlaceholderText("1-99")
-            self._value_input.setToolTip(
-                "Reduce file size by this percentage.\n"
-                "For example, 50 means output is half the source size."
-            )
+            self._value_input.setToolTip("Reduce file size by this percentage.")
         else:
             self._value_input.setPlaceholderText("MB")
             self._value_input.setToolTip("Target output file size in megabytes.")
@@ -157,21 +298,60 @@ class JobRowWidget(QWidget):
             str(int(value)) if value == int(value) else f"{value:.1f}"
         )
         self._value_input.blockSignals(False)
+        self._refresh_compression_hint()
 
     def _current_mode(self) -> SizeMode:
         return self._mode_combo.currentData()
 
     def _on_mode_changed(self):
+        if self._shortcut_combo.currentText() != "Custom":
+            return
         mode = self._current_mode()
-        self._apply_mode_range(mode, 50.0 if mode == SizeMode.PERCENT else 15.0)
+        default_value = 50.0 if mode == SizeMode.PERCENT else 15.0
+        self._apply_mode_range(mode, default_value)
         self._sync_to_job()
 
+    def _on_shortcut_changed(self):
+        preset = SHORTCUT_PRESETS.get(self._shortcut_combo.currentText())
+        is_custom = preset is None
+        self._mode_combo.setEnabled(is_custom)
+        self._value_input.setEnabled(is_custom)
+
+        if preset is not None:
+            self._set_mode_value(preset.size_mode, preset.size_value)
+            self._shortcut_combo.setToolTip(preset.description)
+        else:
+            self._shortcut_combo.setToolTip(
+                "Quick app target. Choose Custom to edit the size manually."
+            )
+
+        self._sync_to_job()
+
+    def _set_mode_value(self, mode: SizeMode, value: float):
+        self._mode_combo.blockSignals(True)
+        self._mode_combo.setCurrentIndex(0 if mode == SizeMode.PERCENT else 1)
+        self._mode_combo.blockSignals(False)
+        self._apply_mode_range(mode, value)
+
+    def _on_workflow_changed(self):
+        self.job.compress_enabled = self._compress_check.isChecked()
+        self.job.upscale_enabled = self._upscale_check.isChecked()
+        self.job.interpolation_enabled = self._interp_check.isChecked()
+        self._refresh_detail_visibility()
+        self._sync_to_job()
+        self._refresh_summary()
+
     def _sync_to_job(self):
+        self.job.compress_enabled = self._compress_check.isChecked()
+        self.job.upscale_enabled = self._upscale_check.isChecked()
+        self.job.interpolation_enabled = self._interp_check.isChecked()
+
         self.job.size_mode = self._current_mode()
         try:
             self.job.size_value = float(self._value_input.text())
         except ValueError:
             pass
+        self._refresh_summary()
 
     def set_progress(self, pct: float):
         self._progress_bar.setValue(int(pct))
@@ -195,8 +375,15 @@ class JobRowWidget(QWidget):
             self._progress_bar.setStyleSheet(bar_base + PROGRESS_CHUNK_RUNNING)
 
         is_running = status == JobStatus.RUNNING
-        self._mode_combo.setEnabled(not is_running)
-        self._value_input.setEnabled(not is_running)
+        self._toggle_btn.setEnabled(not is_running)
+        self._shortcut_combo.setEnabled(not is_running and self._shortcut_combo.currentText() == "Custom")
+        if self._shortcut_combo.currentText() != "Custom":
+            self._shortcut_combo.setEnabled(not is_running)
+        self._mode_combo.setEnabled(not is_running and self._compress_check.isChecked() and self._shortcut_combo.currentText() == "Custom")
+        self._value_input.setEnabled(not is_running and self._compress_check.isChecked() and self._shortcut_combo.currentText() == "Custom")
+        self._compress_check.setEnabled(not is_running)
+        self._upscale_check.setEnabled(not is_running)
+        self._interp_check.setEnabled(not is_running)
         self._remove_btn.setEnabled(not is_running)
 
 
@@ -205,8 +392,11 @@ class JobListWidget(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._rows: dict[str, JobRowWidget] = {}
+        self._rows: dict[int, JobRowWidget] = {}
         self._build_ui()
+
+    def _job_key(self, job: VideoJob) -> int:
+        return id(job)
 
     def _build_ui(self):
         outer = QVBoxLayout(self)
@@ -241,7 +431,7 @@ class JobListWidget(QWidget):
         self._container = QWidget()
         self._list_layout = QVBoxLayout(self._container)
         self._list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-        self._list_layout.setSpacing(0)
+        self._list_layout.setSpacing(8)
         self._list_layout.setContentsMargins(0, 0, 0, 0)
 
         self._empty_label = QLabel(
@@ -266,22 +456,26 @@ class JobListWidget(QWidget):
         self._empty_label.setVisible(False)
         row = JobRowWidget(job, default_mode=default_mode, default_value=default_value)
         row.remove_requested.connect(self.job_remove_requested)
-        self._rows[job.input_path] = row
+        self._rows[self._job_key(job)] = row
         self._list_layout.addWidget(row)
         self._refresh_count()
 
     def update_progress(self, job: VideoJob, pct: float):
-        if row := self._rows.get(job.input_path):
+        if row := self._rows.get(self._job_key(job)):
             row.set_progress(pct)
 
     def update_status(self, job: VideoJob):
-        if row := self._rows.get(job.input_path):
+        if row := self._rows.get(self._job_key(job)):
             row.set_status(job.status)
 
     def remove_job(self, job: VideoJob):
-        if row := self._rows.pop(job.input_path, None):
+        if row := self._rows.pop(self._job_key(job), None):
             self._list_layout.removeWidget(row)
+            row.hide()
+            row.setParent(None)
             row.deleteLater()
+            self._list_layout.invalidate()
+            self._container.updateGeometry()
         self._refresh_count()
 
     def _refresh_count(self):

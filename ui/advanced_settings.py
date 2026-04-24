@@ -153,7 +153,7 @@ class AdvancedSettingsPanel(QWidget):
         """Write current panel values into a VideoJob."""
         display = self._codec_combo.currentText()
         ffmpeg_name = CODEC_TO_FFMPEG.get(display, display)
-        job.video_codec = None if ffmpeg_name == "copy" else ffmpeg_name
+        job.video_codec = ffmpeg_name
 
         bitrate = self._bitrate_spin.value()
         if bitrate > 0:
@@ -171,7 +171,7 @@ class AdvancedSettingsPanel(QWidget):
         job.cpu_load = self._cpu_combo.currentText()
 
         audio = self._audio_combo.currentText()
-        job.strip_audio = (audio == "none")
+        job.strip_audio = self._strip_audio_check.isChecked() or (audio == "none")
         job.audio_codec = None if audio in ("none", "copy") else audio
 
     def populate_from_job(self, job: VideoJob):
@@ -190,4 +190,8 @@ class AdvancedSettingsPanel(QWidget):
         if job.preset:
             self._preset_combo.setCurrentText(job.preset)
         self._cpu_combo.setCurrentText(job.cpu_load or "Balanced")
+        audio_display = "none" if job.strip_audio else (job.audio_codec or "copy")
+        idx = self._audio_combo.findText(audio_display)
+        if idx >= 0:
+            self._audio_combo.setCurrentIndex(idx)
         self._strip_audio_check.setChecked(job.strip_audio)

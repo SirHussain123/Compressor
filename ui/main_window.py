@@ -25,7 +25,8 @@ from PyQt6.QtWidgets import (
 )
 
 from core.job_queue import JobQueue
-from core.video_job import JobStatus, VideoJob
+from core.compression import CompressionEngine
+from core.video_job import InterpolationMode, JobStatus, SizeMode, UpscaleMode, VideoJob
 from core.video_probe import VideoProbe
 from ui.advanced_settings import AdvancedSettingsPanel
 from ui.basic_settings import BasicSettingsPanel
@@ -47,6 +48,7 @@ class MainWindow(QMainWindow):
         self._queue.job_finished.connect(self._on_job_finished)
         self._queue.job_failed.connect(self._on_job_failed)
         self._queue.queue_empty.connect(self._on_queue_empty)
+        self._compression_engine = CompressionEngine()
 
         self._build_ui()
         self.setWindowTitle("Compressor")
@@ -322,8 +324,12 @@ class MainWindow(QMainWindow):
             job = VideoJob(input_path=path, source_metadata=meta)
             self._basic_settings.apply_to_job(job)
             self._advanced_settings.apply_to_job(job)
-            self._interp_panel.apply_to_job(job)
-            self._upscale_panel.apply_to_job(job)
+            job.interpolation_enabled = self._interp_panel.is_enabled()
+            job.upscale_enabled = self._upscale_panel.is_enabled()
+            if job.interpolation_enabled:
+                self._interp_panel.apply_to_job(job)
+            if job.upscale_enabled:
+                self._upscale_panel.apply_to_job(job)
 
             output_folder = self._basic_settings.get_output_folder()
             output_format = job.output_format or "mp4"
@@ -369,20 +375,77 @@ class MainWindow(QMainWindow):
 
         output_folder = self._basic_settings.get_output_folder()
         for job in pending:
-            self._basic_settings.apply_to_job(job)
-            self._advanced_settings.apply_to_job(job)
-            self._interp_panel.apply_to_job(job)
-            self._upscale_panel.apply_to_job(job)
-            output_format = job.output_format or "mp4"
-            raw_path = FileUtils.build_output_path(
-                input_path=job.input_path,
-                output_folder=output_folder,
-                output_format=output_format,
-            )
-            job.output_path = FileUtils.ensure_unique(raw_path)
+            try:
+                if not any(
+                    (
+                        job.compress_enabled,
+                        job.upscale_enabled,
+                        job.interpolation_enabled,
+                    )
+                ):
+                    raise ValueError("Select at least one workflow for this file.")
+
+                self._basic_settings.apply_to_job(job)
+                self._advanced_settings.apply_to_job(job)
+                if job.interpolation_enabled:
+                    self._interp_panel.apply_to_job(job)
+                else:
+                    job.interpolation_mode = InterpolationMode.NONE
+
+                if job.upscale_enabled:
+                    self._upscale_panel.apply_to_job(job)
+                else:
+                    job.upscale_mode = UpscaleMode.NONE
+                    job.upscale_width = None
+                    job.upscale_height = None
+
+                if job.compress_enabled:
+                    self._validate_compression_target(job)
+                output_format = job.output_format or "mp4"
+                raw_path = FileUtils.build_output_path(
+                    input_path=job.input_path,
+                    output_folder=output_folder,
+                    output_format=output_format,
+                )
+                job.output_path = FileUtils.ensure_unique(raw_path)
+            except Exception as exc:
+                QMessageBox.warning(
+                    self,
+                    "Queue validation failed",
+                    f"{job.display_name()}:\n{exc}",
+                )
+                self._status_bar.showMessage("Adjust the queue item and try again.")
+                return
 
         self._start_btn.setEnabled(False)
         self._queue.start()
+
+    def _validate_compression_target(self, job: VideoJob):
+        meta = job.source_metadata
+        if not meta:
+            return
+
+        if job.video_codec == "copy":
+            raise ValueError("Video Codec 'Copy' cannot be used while compression is enabled.")
+
+        if job.bitrate_kbps:
+            return
+
+        if job.size_mode == SizeMode.MB:
+            self._compression_engine.plan_mb(
+                meta,
+                job.video_codec or "libx264",
+                job.preset or "medium",
+                job.size_value,
+            )
+            return
+
+        self._compression_engine.plan_percent(
+            meta,
+            job.video_codec or "libx264",
+            job.preset or "medium",
+            job.size_value,
+        )
 
     def _clear_finished(self):
         for job in list(self._queue.jobs()):

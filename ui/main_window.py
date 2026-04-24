@@ -31,9 +31,8 @@ from core.video_probe import VideoProbe
 from ui.advanced_settings import AdvancedSettingsPanel
 from ui.basic_settings import BasicSettingsPanel
 from ui.file_drop_widget import FileDropWidget
-from ui.interp_panel import InterpPanel
 from ui.job_list_widget import JobListWidget
-from ui.upscale_panel import UpscalePanel
+from ui.system_panel import SystemPanel
 from ui.widgets import NavButton, apply_surface_shadow
 from utils.file_utils import FileUtils
 
@@ -73,8 +72,7 @@ class MainWindow(QMainWindow):
         self._stack = QStackedWidget()
         self._stack.addWidget(self._make_process_page())
         self._stack.addWidget(self._make_settings_page())
-        self._stack.addWidget(self._make_advanced_page())
-        self._stack.addWidget(self._make_enhance_page())
+        self._stack.addWidget(self._make_system_page())
         root.addWidget(self._stack)
 
         self._status_bar = QStatusBar()
@@ -111,7 +109,7 @@ class MainWindow(QMainWindow):
         layout.addSpacing(12)
 
         self._nav_buttons: list[QPushButton] = []
-        nav_items = (("Process", 0), ("Settings", 1), ("Advanced", 2), ("Enhance", 3))
+        nav_items = (("Process", 0), ("Settings", 1), ("System", 2))
         for label, idx in nav_items:
             btn = NavButton(label)
             btn.setObjectName("navButton")
@@ -189,35 +187,19 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(
             self._make_page_header(
-                "Output Settings",
-                "Pick your export format, sizing defaults, and where finished files should land.",
+                "Settings",
+                "Pick export defaults, codec behavior, audio strategy, and where finished files should land.",
             )
         )
 
         self._basic_settings = BasicSettingsPanel()
-        layout.addWidget(self._basic_settings)
-        layout.addStretch()
-        return self._wrap_scroll_page(inner)
-
-    def _make_advanced_page(self) -> QWidget:
-        inner = QWidget()
-        layout = QVBoxLayout(inner)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(16)
-
-        layout.addWidget(
-            self._make_page_header(
-                "Advanced Controls",
-                "Shape codec behavior, audio strategy, and how hard the app should drive your CPU.",
-            )
-        )
-
         self._advanced_settings = AdvancedSettingsPanel()
+        layout.addWidget(self._basic_settings)
         layout.addWidget(self._advanced_settings)
         layout.addStretch()
         return self._wrap_scroll_page(inner)
 
-    def _make_enhance_page(self) -> QWidget:
+    def _make_system_page(self) -> QWidget:
         inner = QWidget()
         layout = QVBoxLayout(inner)
         layout.setContentsMargins(24, 24, 24, 24)
@@ -225,16 +207,13 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(
             self._make_page_header(
-                "Enhance",
-                "Turn on interpolation and upscaling while keeping processing cost visible and manageable.",
+                "System",
+                "See the current hardware, choose CPU and GPU load profiles, and understand how hard each workload will push the machine.",
             )
         )
 
-        self._interp_panel = InterpPanel()
-        self._upscale_panel = UpscalePanel()
-        layout.addWidget(self._interp_panel)
-        layout.addWidget(self._make_divider())
-        layout.addWidget(self._upscale_panel)
+        self._system_panel = SystemPanel()
+        layout.addWidget(self._system_panel)
         layout.addStretch()
         return self._wrap_scroll_page(inner)
 
@@ -324,12 +303,7 @@ class MainWindow(QMainWindow):
             job = VideoJob(input_path=path, source_metadata=meta)
             self._basic_settings.apply_to_job(job)
             self._advanced_settings.apply_to_job(job)
-            job.interpolation_enabled = self._interp_panel.is_enabled()
-            job.upscale_enabled = self._upscale_panel.is_enabled()
-            if job.interpolation_enabled:
-                self._interp_panel.apply_to_job(job)
-            if job.upscale_enabled:
-                self._upscale_panel.apply_to_job(job)
+            self._system_panel.apply_to_job(job)
 
             output_folder = self._basic_settings.get_output_folder()
             output_format = job.output_format or "mp4"
@@ -337,6 +311,7 @@ class MainWindow(QMainWindow):
                 input_path=path,
                 output_folder=output_folder,
                 output_format=output_format,
+                suffix=FileUtils.build_workflow_suffix(job),
             )
             job.output_path = FileUtils.ensure_unique(raw_path)
 
@@ -387,17 +362,7 @@ class MainWindow(QMainWindow):
 
                 self._basic_settings.apply_to_job(job)
                 self._advanced_settings.apply_to_job(job)
-                if job.interpolation_enabled:
-                    self._interp_panel.apply_to_job(job)
-                else:
-                    job.interpolation_mode = InterpolationMode.NONE
-
-                if job.upscale_enabled:
-                    self._upscale_panel.apply_to_job(job)
-                else:
-                    job.upscale_mode = UpscaleMode.NONE
-                    job.upscale_width = None
-                    job.upscale_height = None
+                self._system_panel.apply_to_job(job)
 
                 if job.compress_enabled:
                     self._validate_compression_target(job)
@@ -406,6 +371,7 @@ class MainWindow(QMainWindow):
                     input_path=job.input_path,
                     output_folder=output_folder,
                     output_format=output_format,
+                    suffix=FileUtils.build_workflow_suffix(job),
                 )
                 job.output_path = FileUtils.ensure_unique(raw_path)
             except Exception as exc:

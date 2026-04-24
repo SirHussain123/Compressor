@@ -9,11 +9,13 @@ from PyQt6.QtGui import QColor, QPainter, QPen, QPolygonF
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
+    QDoubleSpinBox,
     QFrame,
     QGraphicsDropShadowEffect,
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -133,6 +135,9 @@ class ConsistentComboBox(QComboBox):
         self.update()
         super().leaveEvent(event)
 
+    def wheelEvent(self, event):
+        event.ignore()
+
     def paintEvent(self, event):
         del event
 
@@ -187,6 +192,19 @@ class ConsistentComboBox(QComboBox):
     def _apply_popup_index(self, index: int):
         self.setCurrentIndex(index)
         self.hidePopup()
+
+
+class _NoWheelSpinMixin:
+    def wheelEvent(self, event):
+        event.ignore()
+
+
+class NoWheelSpinBox(_NoWheelSpinMixin, QSpinBox):
+    pass
+
+
+class NoWheelDoubleSpinBox(_NoWheelSpinMixin, QDoubleSpinBox):
+    pass
 
 
 class _ComboPopup(QFrame):

@@ -5,20 +5,18 @@ Panel for advanced FFmpeg parameters: codec, CRF, bitrate, preset, audio.
 """
 
 from PyQt6.QtWidgets import (
-    QWidget, QFormLayout, QComboBox, QSlider,
+    QWidget, QFormLayout, QSlider,
     QSpinBox, QCheckBox, QLabel, QHBoxLayout, QGroupBox, QVBoxLayout
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from core.video_job import VideoJob
 from core.compression import SPEED_PRESETS, CRF_DEFAULTS
-from ui.widgets import ConsistentComboBox, apply_surface_shadow
+from ui.widgets import ConsistentComboBox, NoWheelSpinBox, apply_surface_shadow
 from utils.format_utils import CODEC_TO_FFMPEG, FFMPEG_TO_CODEC
 
 
 VIDEO_CODECS = ["H.264", "H.265", "VP9", "AV1", "Copy"]
 AUDIO_CODECS = ["copy", "aac", "mp3", "opus", "flac", "none"]
-CPU_LOAD_LEVELS = ["Low", "Balanced", "High", "Maximum"]
-
 # Sentinel value meaning "let the worker decide based on source bitrate"
 CRF_AUTO = -1
 
@@ -96,18 +94,8 @@ class AdvancedSettingsPanel(QWidget):
         self._preset_combo.currentIndexChanged.connect(self.settings_changed)
         layout.addRow("Encoding Speed:", self._preset_combo)
 
-        self._cpu_combo = ConsistentComboBox()
-        self._cpu_combo.addItems(CPU_LOAD_LEVELS)
-        self._cpu_combo.setCurrentText("Balanced")
-        self._cpu_combo.setToolTip(
-            "Controls how hard encoding can lean on your CPU.\n"
-            "Use Low to keep the machine more responsive while processing."
-        )
-        self._cpu_combo.currentIndexChanged.connect(self.settings_changed)
-        layout.addRow("CPU Load:", self._cpu_combo)
-
         # --- Target bitrate ---
-        self._bitrate_spin = QSpinBox()
+        self._bitrate_spin = NoWheelSpinBox()
         self._bitrate_spin.setRange(0, 100_000)
         self._bitrate_spin.setValue(0)
         self._bitrate_spin.setSuffix(" kbps")
@@ -168,8 +156,6 @@ class AdvancedSettingsPanel(QWidget):
             job.bitrate_kbps = None
 
         job.preset = self._preset_combo.currentText()
-        job.cpu_load = self._cpu_combo.currentText()
-
         audio = self._audio_combo.currentText()
         job.strip_audio = self._strip_audio_check.isChecked() or (audio == "none")
         job.audio_codec = None if audio in ("none", "copy") else audio
@@ -189,7 +175,6 @@ class AdvancedSettingsPanel(QWidget):
             self._bitrate_spin.setValue(job.bitrate_kbps)
         if job.preset:
             self._preset_combo.setCurrentText(job.preset)
-        self._cpu_combo.setCurrentText(job.cpu_load or "Balanced")
         audio_display = "none" if job.strip_audio else (job.audio_codec or "copy")
         idx = self._audio_combo.findText(audio_display)
         if idx >= 0:

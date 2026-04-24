@@ -9,11 +9,13 @@ import logging
 import os
 import subprocess
 import threading
+from typing import Any
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from core.compression import CompressionEngine, CompressionPlan
 from core.video_job import (
+    FrameGenOutputPreset,
     InterpolationMode,
     JobStatus,
     SizeMode,
@@ -21,6 +23,7 @@ from core.video_job import (
     VideoJob,
 )
 from utils.file_utils import FileUtils
+from utils.ffmpeg_caps import first_available_encoder
 from utils.tool_paths import resolve_realesrgan_binary, resolve_rife_binary
 
 log = logging.getLogger(__name__)
@@ -42,6 +45,13 @@ CPU_THREADS = {
     "Balanced": 4,
     "High": 8,
     "Maximum": 0,
+}
+
+GPU_JOBS = {
+    "Low": "1:1:1",
+    "Balanced": "1:2:2",
+    "High": "2:3:2",
+    "Maximum": "2:4:4",
 }
 
 
@@ -306,6 +316,10 @@ class FFmpegWorker(QThread):
         fmt = (job.output_format or "mp4").lower()
         codec = job.video_codec or FORMAT_DEFAULT_CODEC.get(fmt, "libx264")
         preset = job.preset or "medium"
+        framegen_profile = self._framegen_encode_profile(codec, preset)
+        if framegen_profile is not None:
+            codec = str(framegen_profile["codec"])
+            preset = str(framegen_profile["preset"])
 
         cmd = ["ffmpeg", "-y", "-i", input_path]
         if vf_filters:
@@ -327,6 +341,8 @@ class FFmpegWorker(QThread):
             cmd += ["-b:v", f"{job.bitrate_kbps}k"]
         elif job.crf is not None:
             cmd += ["-crf", str(job.crf)]
+        elif framegen_profile is not None:
+            cmd += self._framegen_quality_args(codec, framegen_profile)
         elif codec in CRF_SPECIAL:
             cmd += ["-crf", "18"]
         elif codec not in NO_PRESET_CODECS:
@@ -352,6 +368,107 @@ class FFmpegWorker(QThread):
         if threads > 0:
             return ["-threads", str(threads)]
         return []
+
+    def _gpu_args(self) -> list[str]:
+        profile = GPU_JOBS.get(self.job.gpu_load, GPU_JOBS["Balanced"])
+        return ["-j", profile]
+
+    def _choose_hardware_encoder(self, fmt: str, quality_bias: str) -> str | None:
+        if fmt not in {"mp4", "mkv", "mov"}:
+            return None
+        if quality_bias == "hevc":
+            return first_available_encoder(["hevc_nvenc", "hevc_qsv", "hevc_amf"])
+        return first_available_encoder(["h264_nvenc", "h264_qsv", "h264_amf"])
+
+    def _framegen_encode_profile(
+        self,
+        codec: str,
+        preset: str,
+    ) -> dict[str, Any] | None:
+        job = self.job
+        if job.compress_enabled or not job.interpolation_enabled:
+            return None
+        if job.bitrate_kbps or job.crf is not None:
+            return None
+
+        fmt = (job.output_format or "mp4").lower()
+        selected = job.framegen_output_preset
+        tuned_codec = codec
+
+        # The default H.264 path is too expensive for many 2x frame-gen outputs,
+        # so smaller/balanced presets can switch to a more size-efficient codec.
+        if codec in (None, "libx264") or codec == "copy":
+            if fmt in {"mp4", "mkv", "mov"} and selected != FrameGenOutputPreset.HIGHER_QUALITY:
+                tuned_codec = self._choose_hardware_encoder(fmt, "hevc") or "libx265"
+            elif fmt == "webm":
+                tuned_codec = "libvpx-vp9"
+            else:
+                tuned_codec = self._choose_hardware_encoder(fmt, "h264") or FORMAT_DEFAULT_CODEC.get(fmt, "libx264")
+
+        profiles = {
+            "libx264": {
+                FrameGenOutputPreset.SMALLER: {"codec": "libx264", "crf": 25, "preset": "medium"},
+                FrameGenOutputPreset.BALANCED: {"codec": "libx264", "crf": 22, "preset": "medium"},
+                FrameGenOutputPreset.HIGHER_QUALITY: {"codec": "libx264", "crf": 18, "preset": "slow"},
+            },
+            "libx265": {
+                FrameGenOutputPreset.SMALLER: {"codec": "libx265", "crf": 31, "preset": "medium"},
+                FrameGenOutputPreset.BALANCED: {"codec": "libx265", "crf": 28, "preset": "medium"},
+                FrameGenOutputPreset.HIGHER_QUALITY: {"codec": "libx265", "crf": 24, "preset": "slow"},
+            },
+            "h264_nvenc": {
+                FrameGenOutputPreset.SMALLER: {"codec": "h264_nvenc", "cq": 27, "preset": "p5"},
+                FrameGenOutputPreset.BALANCED: {"codec": "h264_nvenc", "cq": 23, "preset": "p5"},
+                FrameGenOutputPreset.HIGHER_QUALITY: {"codec": "h264_nvenc", "cq": 20, "preset": "p6"},
+            },
+            "hevc_nvenc": {
+                FrameGenOutputPreset.SMALLER: {"codec": "hevc_nvenc", "cq": 30, "preset": "p5"},
+                FrameGenOutputPreset.BALANCED: {"codec": "hevc_nvenc", "cq": 27, "preset": "p5"},
+                FrameGenOutputPreset.HIGHER_QUALITY: {"codec": "hevc_nvenc", "cq": 23, "preset": "p6"},
+            },
+            "h264_qsv": {
+                FrameGenOutputPreset.SMALLER: {"codec": "h264_qsv", "global_quality": 28, "preset": "medium"},
+                FrameGenOutputPreset.BALANCED: {"codec": "h264_qsv", "global_quality": 24, "preset": "medium"},
+                FrameGenOutputPreset.HIGHER_QUALITY: {"codec": "h264_qsv", "global_quality": 20, "preset": "slow"},
+            },
+            "hevc_qsv": {
+                FrameGenOutputPreset.SMALLER: {"codec": "hevc_qsv", "global_quality": 30, "preset": "medium"},
+                FrameGenOutputPreset.BALANCED: {"codec": "hevc_qsv", "global_quality": 27, "preset": "medium"},
+                FrameGenOutputPreset.HIGHER_QUALITY: {"codec": "hevc_qsv", "global_quality": 23, "preset": "slow"},
+            },
+            "h264_amf": {
+                FrameGenOutputPreset.SMALLER: {"codec": "h264_amf", "qp": 28, "preset": "balanced"},
+                FrameGenOutputPreset.BALANCED: {"codec": "h264_amf", "qp": 24, "preset": "balanced"},
+                FrameGenOutputPreset.HIGHER_QUALITY: {"codec": "h264_amf", "qp": 20, "preset": "quality"},
+            },
+            "hevc_amf": {
+                FrameGenOutputPreset.SMALLER: {"codec": "hevc_amf", "qp": 30, "preset": "balanced"},
+                FrameGenOutputPreset.BALANCED: {"codec": "hevc_amf", "qp": 27, "preset": "balanced"},
+                FrameGenOutputPreset.HIGHER_QUALITY: {"codec": "hevc_amf", "qp": 23, "preset": "quality"},
+            },
+            "libvpx-vp9": {
+                FrameGenOutputPreset.SMALLER: {"codec": "libvpx-vp9", "crf": 34, "preset": preset},
+                FrameGenOutputPreset.BALANCED: {"codec": "libvpx-vp9", "crf": 30, "preset": preset},
+                FrameGenOutputPreset.HIGHER_QUALITY: {"codec": "libvpx-vp9", "crf": 24, "preset": preset},
+            },
+        }
+
+        if tuned_codec not in profiles:
+            return {
+                "codec": tuned_codec,
+                "crf": 24 if selected == FrameGenOutputPreset.SMALLER else 21 if selected == FrameGenOutputPreset.BALANCED else 18,
+                "preset": "medium" if selected != FrameGenOutputPreset.HIGHER_QUALITY else "slow",
+            }
+        return profiles[tuned_codec][selected]
+
+    def _framegen_quality_args(self, codec: str, profile: dict[str, Any]) -> list[str]:
+        if codec.endswith("_nvenc"):
+            return ["-rc:v", "vbr", "-cq:v", str(profile["cq"]), "-b:v", "0"]
+        if codec.endswith("_qsv"):
+            return ["-global_quality", str(profile["global_quality"])]
+        if codec.endswith("_amf"):
+            return ["-qp_i", str(profile["qp"]), "-qp_p", str(profile["qp"])]
+        return ["-crf", str(profile["crf"])]
 
     def _vf_filters(self) -> list[str]:
         job = self.job
@@ -415,6 +532,9 @@ class FFmpegWorker(QThread):
             input_path,
             "-vsync",
             "0",
+        ]
+        cmd += self._thread_args()
+        cmd += [
             "-progress",
             "pipe:1",
             "-nostats",
@@ -445,6 +565,7 @@ class FFmpegWorker(QThread):
             "-f",
             "png",
         ]
+        cmd += self._gpu_args()
         self._run_process(
             cmd,
             progress_offset=0.18,
@@ -471,6 +592,7 @@ class FFmpegWorker(QThread):
             "-f",
             output_pattern,
         ]
+        cmd += self._gpu_args()
         self._run_process(
             cmd,
             progress_offset=0.52,
@@ -491,6 +613,11 @@ class FFmpegWorker(QThread):
         video_codec: str,
     ):
         input_pattern = os.path.join(frames_dir, frame_pattern)
+        preset = self.job.preset or "medium"
+        framegen_profile = self._framegen_encode_profile(video_codec, preset)
+        if framegen_profile is not None:
+            video_codec = str(framegen_profile["codec"])
+            preset = str(framegen_profile["preset"])
         cmd = [
             "ffmpeg",
             "-y",
@@ -508,10 +635,20 @@ class FFmpegWorker(QThread):
         if vf_filters:
             cmd += ["-vf", ",".join(vf_filters)]
         cmd += ["-c:v", video_codec]
-        if video_codec not in NO_PRESET_CODECS:
-            cmd += ["-crf", "12", "-preset", "medium"]
+        cmd += self._thread_args()
+        if self.job.bitrate_kbps:
+            cmd += ["-b:v", f"{self.job.bitrate_kbps}k"]
+        elif self.job.crf is not None:
+            cmd += ["-crf", str(self.job.crf)]
+        elif framegen_profile is not None:
+            cmd += self._framegen_quality_args(video_codec, framegen_profile)
         elif video_codec in CRF_SPECIAL:
-            cmd += ["-crf", "12"]
+            cmd += ["-crf", "18"]
+        elif video_codec not in NO_PRESET_CODECS:
+            # Use the same sane default as the standard single-pass path.
+            cmd += ["-crf", "18"]
+        if preset and video_codec not in NO_PRESET_CODECS:
+            cmd += ["-preset", preset]
         cmd += ["-pix_fmt", "yuv420p"]
         if final_audio:
             cmd += self._audio_args()

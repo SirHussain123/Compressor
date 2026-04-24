@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
 
 from core.upscaling import REALESRGAN_MODELS, UPSCALE_PRESETS, UpscalingEngine
 from core.video_job import UpscaleMode, VideoJob
-from ui.widgets import ConsistentComboBox, apply_surface_shadow
+from ui.widgets import ConsistentComboBox, NoWheelSpinBox, apply_surface_shadow
 
 
 class UpscalePanel(QWidget):
@@ -62,10 +62,10 @@ class UpscalePanel(QWidget):
         self._preset_combo.currentIndexChanged.connect(self._on_preset_changed)
         form.addRow("Target Resolution:", self._preset_combo)
 
-        self._custom_w = QSpinBox()
+        self._custom_w = NoWheelSpinBox()
         self._custom_w.setRange(1, 7680)
         self._custom_w.setValue(1920)
-        self._custom_h = QSpinBox()
+        self._custom_h = NoWheelSpinBox()
         self._custom_h.setRange(1, 4320)
         self._custom_h.setValue(1080)
         custom_row = QWidget()

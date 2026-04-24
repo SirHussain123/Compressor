@@ -9,6 +9,8 @@ import tempfile
 import shutil
 from pathlib import Path
 
+from core.video_job import VideoJob
+
 
 class FileUtils:
 
@@ -37,6 +39,22 @@ class FileUtils:
         folder = Path(output_folder) if output_folder else p.parent
         stem = p.stem + suffix
         return str(folder / f"{stem}.{output_format}")
+
+    @staticmethod
+    def build_workflow_suffix(job: VideoJob) -> str:
+        """
+        Build a readable output suffix from the active workflows on a job.
+        """
+        parts: list[str] = []
+        if job.upscale_enabled:
+            parts.append("upscaled")
+        if job.interpolation_enabled:
+            parts.append("framegen")
+        if job.compress_enabled:
+            parts.append("compressed")
+        if not parts:
+            return "_processed"
+        return "_" + "_".join(parts)
 
     @staticmethod
     def ensure_unique(path: str) -> str:

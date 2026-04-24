@@ -22,7 +22,12 @@ from PyQt6.QtWidgets import (
 )
 
 from core.video_job import SizeMode, VideoJob
-from ui.widgets import ConsistentComboBox, apply_surface_shadow
+from ui.widgets import (
+    ConsistentComboBox,
+    NoWheelDoubleSpinBox,
+    NoWheelSpinBox,
+    apply_surface_shadow,
+)
 
 
 COMMON_RESOLUTIONS = [
@@ -81,7 +86,7 @@ class BasicSettingsPanel(QWidget):
 
         value_row = QHBoxLayout()
 
-        self._pct_spin = QDoubleSpinBox()
+        self._pct_spin = NoWheelDoubleSpinBox()
         self._pct_spin.setRange(1.0, 99.0)
         self._pct_spin.setValue(50.0)
         self._pct_spin.setSuffix(" % smaller")
@@ -93,7 +98,7 @@ class BasicSettingsPanel(QWidget):
         )
         self._pct_spin.valueChanged.connect(self.settings_changed)
 
-        self._mb_spin = QDoubleSpinBox()
+        self._mb_spin = NoWheelDoubleSpinBox()
         self._mb_spin.setRange(0.1, 100_000.0)
         self._mb_spin.setValue(20.0)
         self._mb_spin.setSuffix(" MB")
@@ -133,11 +138,11 @@ class BasicSettingsPanel(QWidget):
         cl = QHBoxLayout(custom_row)
         cl.setContentsMargins(0, 0, 0, 0)
         cl.setSpacing(6)
-        self._custom_w = QSpinBox()
+        self._custom_w = NoWheelSpinBox()
         self._custom_w.setRange(2, 7680)
         self._custom_w.setValue(1920)
         self._custom_w.setSuffix(" px")
-        self._custom_h = QSpinBox()
+        self._custom_h = NoWheelSpinBox()
         self._custom_h.setRange(2, 4320)
         self._custom_h.setValue(1080)
         self._custom_h.setSuffix(" px")
@@ -149,7 +154,7 @@ class BasicSettingsPanel(QWidget):
         self._custom_res_widget.setVisible(False)
         form.addRow("Custom (W x H):", self._custom_res_widget)
 
-        self._fps_spin = QDoubleSpinBox()
+        self._fps_spin = NoWheelDoubleSpinBox()
         self._fps_spin.setRange(FPS_ORIGINAL, 240.0)
         self._fps_spin.setValue(FPS_ORIGINAL)
         self._fps_spin.setSingleStep(1.0)

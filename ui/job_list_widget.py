@@ -15,15 +15,25 @@ from PyQt6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QSpinBox,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
 from core.compression import CompressionEngine, CompressionLimits
-from core.video_job import JobStatus, SizeMode, VideoJob
+from core.interpolation import InterpolationEngine, RIFE_MODELS
+from core.upscaling import REALESRGAN_MODELS, UPSCALE_PRESETS, UpscalingEngine
+from core.video_job import (
+    FrameGenOutputPreset,
+    InterpolationMode,
+    JobStatus,
+    SizeMode,
+    UpscaleMode,
+    VideoJob,
+)
 from ui.compression_shortcuts import SHORTCUT_PRESETS
-from ui.widgets import ConsistentComboBox
+from ui.widgets import ConsistentComboBox, NoWheelSpinBox
 
 
 STATUS_STYLE = {
@@ -54,6 +64,8 @@ class JobRowWidget(QWidget):
         super().__init__(parent)
         self.job = job
         self._compression_engine = CompressionEngine()
+        self._interp_engine = InterpolationEngine()
+        self._upscale_engine = UpscalingEngine()
         self._limits = self._build_limits()
         self._details_expanded = False
         self.setObjectName("jobRow")
@@ -212,6 +224,99 @@ class JobRowWidget(QWidget):
         compression_layout.addWidget(self._compression_hint, 1)
         details.addWidget(self._compression_controls)
 
+        self._interp_controls = QWidget()
+        interp_layout = QHBoxLayout(self._interp_controls)
+        interp_layout.setContentsMargins(0, 0, 0, 0)
+        interp_layout.setSpacing(8)
+
+        self._interp_mode_combo = ConsistentComboBox()
+        self._interp_mode_combo.addItem("FFmpeg 2x", InterpolationMode.MINTERPOLATE_2X)
+        self._interp_mode_combo.addItem("RIFE 2x", InterpolationMode.RIFE_2X)
+        if InterpolationEngine.is_rife_available():
+            self._interp_mode_combo.setCurrentIndex(1)
+        self._interp_mode_combo.setFixedWidth(130)
+        self._interp_mode_combo.currentIndexChanged.connect(self._on_interp_mode_changed)
+
+        self._interp_model_combo = ConsistentComboBox()
+        self._interp_model_combo.addItems(RIFE_MODELS)
+        self._interp_model_combo.setFixedWidth(140)
+        self._interp_model_combo.currentIndexChanged.connect(self._sync_to_job)
+
+        self._interp_output_combo = ConsistentComboBox()
+        self._interp_output_combo.addItem("Smaller", FrameGenOutputPreset.SMALLER)
+        self._interp_output_combo.addItem("Balanced", FrameGenOutputPreset.BALANCED)
+        self._interp_output_combo.addItem("Higher Quality", FrameGenOutputPreset.HIGHER_QUALITY)
+        self._interp_output_combo.setCurrentIndex(1)
+        self._interp_output_combo.setFixedWidth(130)
+        self._interp_output_combo.currentIndexChanged.connect(self._sync_to_job)
+
+        self._interp_hint = QLabel("")
+        self._interp_hint.setObjectName("jobMeta")
+        self._interp_hint.setWordWrap(True)
+
+        interp_layout.addWidget(QLabel("Frame Gen:"))
+        interp_layout.addWidget(self._interp_mode_combo)
+        interp_layout.addWidget(self._interp_model_combo)
+        interp_layout.addWidget(self._interp_output_combo)
+        interp_layout.addWidget(self._interp_hint, 1)
+        details.addWidget(self._interp_controls)
+
+        self._upscale_controls = QWidget()
+        upscale_layout = QHBoxLayout(self._upscale_controls)
+        upscale_layout.setContentsMargins(0, 0, 0, 0)
+        upscale_layout.setSpacing(8)
+
+        self._upscale_method_combo = ConsistentComboBox()
+        self._upscale_method_combo.addItem("Lanczos", UpscaleMode.LANCZOS)
+        self._upscale_method_combo.addItem("Real-ESRGAN", UpscaleMode.REAL_ESRGAN)
+        self._upscale_method_combo.setFixedWidth(132)
+        self._upscale_method_combo.currentIndexChanged.connect(self._on_upscale_method_changed)
+
+        self._upscale_preset_combo = ConsistentComboBox()
+        self._upscale_preset_combo.addItem("Custom", None)
+        for name in UPSCALE_PRESETS:
+            self._upscale_preset_combo.addItem(name, name)
+        self._upscale_preset_combo.setFixedWidth(120)
+        self._upscale_preset_combo.currentIndexChanged.connect(self._on_upscale_preset_changed)
+
+        self._upscale_w_spin = NoWheelSpinBox()
+        self._upscale_w_spin.setRange(2, 7680)
+        self._upscale_w_spin.setValue(self.job.target_width or 1920)
+        self._upscale_w_spin.setFixedWidth(84)
+        self._upscale_w_spin.valueChanged.connect(self._sync_to_job)
+
+        self._upscale_h_spin = NoWheelSpinBox()
+        self._upscale_h_spin.setRange(2, 4320)
+        self._upscale_h_spin.setValue(self.job.target_height or 1080)
+        self._upscale_h_spin.setFixedWidth(84)
+        self._upscale_h_spin.valueChanged.connect(self._sync_to_job)
+
+        self._upscale_model_combo = ConsistentComboBox()
+        self._upscale_model_combo.addItems(REALESRGAN_MODELS)
+        self._upscale_model_combo.setFixedWidth(180)
+        self._upscale_model_combo.currentIndexChanged.connect(self._sync_to_job)
+
+        self._upscale_scale_combo = ConsistentComboBox()
+        self._upscale_scale_combo.addItem("2x", 2)
+        self._upscale_scale_combo.addItem("4x", 4)
+        self._upscale_scale_combo.setFixedWidth(72)
+        self._upscale_scale_combo.currentIndexChanged.connect(self._sync_to_job)
+
+        self._upscale_hint = QLabel("")
+        self._upscale_hint.setObjectName("jobMeta")
+        self._upscale_hint.setWordWrap(True)
+
+        upscale_layout.addWidget(QLabel("Upscale:"))
+        upscale_layout.addWidget(self._upscale_method_combo)
+        upscale_layout.addWidget(self._upscale_preset_combo)
+        upscale_layout.addWidget(self._upscale_w_spin)
+        upscale_layout.addWidget(QLabel("x"))
+        upscale_layout.addWidget(self._upscale_h_spin)
+        upscale_layout.addWidget(self._upscale_model_combo)
+        upscale_layout.addWidget(self._upscale_scale_combo)
+        upscale_layout.addWidget(self._upscale_hint, 1)
+        details.addWidget(self._upscale_controls)
+
         content_layout.addWidget(self._details_widget)
         outer.addWidget(content)
 
@@ -271,6 +376,12 @@ class JobRowWidget(QWidget):
         self._toggle_btn.setText("Hide" if self._details_expanded else "Workflow")
         if hasattr(self, "_compression_controls"):
             self._compression_controls.setVisible(self._compress_check.isChecked())
+        if hasattr(self, "_interp_controls"):
+            self._interp_controls.setVisible(self._interp_check.isChecked())
+        if hasattr(self, "_upscale_controls"):
+            self._upscale_controls.setVisible(self._upscale_check.isChecked())
+        self._refresh_interp_hint()
+        self._refresh_upscale_visibility()
         self._refresh_compression_hint()
 
     def _refresh_compression_hint(self):
@@ -285,6 +396,42 @@ class JobRowWidget(QWidget):
         else:
             floor = self._limits.min_target_mb if self._limits else 0.1
             self._compression_hint.setText(f"Decoder floor: about {floor:.1f} MB")
+
+    def _refresh_interp_hint(self):
+        if not hasattr(self, "_interp_hint"):
+            return
+        is_rife = self._interp_mode_combo.currentData() == InterpolationMode.RIFE_2X
+        self._interp_model_combo.setVisible(is_rife)
+        if not self._interp_check.isChecked():
+            self._interp_hint.setText("")
+            return
+        if is_rife:
+            if InterpolationEngine.is_rife_available():
+                self._interp_hint.setText("Higher quality, heavier GPU load.")
+            else:
+                self._interp_hint.setText("RIFE binary not found in ai/rife or PATH.")
+        else:
+            self._interp_hint.setText("Built in, lighter setup, lower quality.")
+
+    def _refresh_upscale_visibility(self):
+        if not hasattr(self, "_upscale_controls"):
+            return
+        is_ai = self._upscale_method_combo.currentData() == UpscaleMode.REAL_ESRGAN
+        is_custom = self._upscale_preset_combo.currentData() is None
+        self._upscale_w_spin.setVisible(is_custom)
+        self._upscale_h_spin.setVisible(is_custom)
+        self._upscale_model_combo.setVisible(is_ai)
+        self._upscale_scale_combo.setVisible(is_ai)
+        if not self._upscale_check.isChecked():
+            self._upscale_hint.setText("")
+            return
+        if is_ai:
+            if UpscalingEngine.is_realesrgan_available():
+                self._upscale_hint.setText("Best visual detail, heavier GPU load.")
+            else:
+                self._upscale_hint.setText("Real-ESRGAN binary not found in ai/realesrgan or PATH.")
+        else:
+            self._upscale_hint.setText("Fast built-in resize with lighter system load.")
 
     def _apply_mode_range(self, mode: SizeMode, value: float):
         self._value_input.blockSignals(True)
@@ -333,6 +480,25 @@ class JobRowWidget(QWidget):
         self._mode_combo.blockSignals(False)
         self._apply_mode_range(mode, value)
 
+    def _on_interp_mode_changed(self):
+        is_rife = self._interp_mode_combo.currentData() == InterpolationMode.RIFE_2X
+        self._interp_model_combo.setVisible(is_rife)
+        self._refresh_interp_hint()
+        self._sync_to_job()
+
+    def _on_upscale_method_changed(self):
+        self._refresh_upscale_visibility()
+        self._sync_to_job()
+
+    def _on_upscale_preset_changed(self):
+        preset = self._upscale_preset_combo.currentData()
+        if preset in UPSCALE_PRESETS:
+            width, height = UPSCALE_PRESETS[preset]
+            self._upscale_w_spin.setValue(width)
+            self._upscale_h_spin.setValue(height)
+        self._refresh_upscale_visibility()
+        self._sync_to_job()
+
     def _on_workflow_changed(self):
         self.job.compress_enabled = self._compress_check.isChecked()
         self.job.upscale_enabled = self._upscale_check.isChecked()
@@ -351,6 +517,39 @@ class JobRowWidget(QWidget):
             self.job.size_value = float(self._value_input.text())
         except ValueError:
             pass
+
+        if self.job.interpolation_enabled:
+            mode = self._interp_mode_combo.currentData()
+            self.job.framegen_output_preset = self._interp_output_combo.currentData()
+            if mode == InterpolationMode.RIFE_2X:
+                self._interp_engine.apply_rife(
+                    self.job,
+                    self._interp_model_combo.currentText(),
+                )
+            else:
+                self._interp_engine.apply_2x(self.job)
+        else:
+            self._interp_engine.disable(self.job)
+
+        if self.job.upscale_enabled:
+            width = self._upscale_w_spin.value()
+            height = self._upscale_h_spin.value()
+            method = self._upscale_method_combo.currentData()
+            if method == UpscaleMode.REAL_ESRGAN:
+                self._upscale_engine.apply_realesrgan(
+                    self.job,
+                    width,
+                    height,
+                    scale=self._upscale_scale_combo.currentData(),
+                    model_name=self._upscale_model_combo.currentText(),
+                )
+            else:
+                self._upscale_engine.apply_lanczos(self.job, width, height)
+        else:
+            self._upscale_engine.disable(self.job)
+
+        self._refresh_interp_hint()
+        self._refresh_upscale_visibility()
         self._refresh_summary()
 
     def set_progress(self, pct: float):
@@ -381,6 +580,15 @@ class JobRowWidget(QWidget):
             self._shortcut_combo.setEnabled(not is_running)
         self._mode_combo.setEnabled(not is_running and self._compress_check.isChecked() and self._shortcut_combo.currentText() == "Custom")
         self._value_input.setEnabled(not is_running and self._compress_check.isChecked() and self._shortcut_combo.currentText() == "Custom")
+        self._interp_mode_combo.setEnabled(not is_running and self._interp_check.isChecked())
+        self._interp_model_combo.setEnabled(not is_running and self._interp_check.isChecked())
+        self._interp_output_combo.setEnabled(not is_running and self._interp_check.isChecked())
+        self._upscale_method_combo.setEnabled(not is_running and self._upscale_check.isChecked())
+        self._upscale_preset_combo.setEnabled(not is_running and self._upscale_check.isChecked())
+        self._upscale_w_spin.setEnabled(not is_running and self._upscale_check.isChecked())
+        self._upscale_h_spin.setEnabled(not is_running and self._upscale_check.isChecked())
+        self._upscale_model_combo.setEnabled(not is_running and self._upscale_check.isChecked())
+        self._upscale_scale_combo.setEnabled(not is_running and self._upscale_check.isChecked())
         self._compress_check.setEnabled(not is_running)
         self._upscale_check.setEnabled(not is_running)
         self._interp_check.setEnabled(not is_running)

@@ -36,6 +36,12 @@ class SizeMode(Enum):
     MB      = auto()   # target X megabytes
 
 
+class FrameGenOutputPreset(Enum):
+    SMALLER = auto()
+    BALANCED = auto()
+    HIGHER_QUALITY = auto()
+
+
 @dataclass
 class VideoJob:
     # --- I/O ---
@@ -62,11 +68,13 @@ class VideoJob:
     bitrate_kbps:     Optional[int]   = None
     strip_audio:      bool            = False
     cpu_load:         str             = "Balanced"
+    gpu_load:         str             = "Balanced"
 
     # --- Frame interpolation ---
     interpolation_enabled: bool = False
     interpolation_mode: InterpolationMode = InterpolationMode.NONE
     interpolation_model: str = "rife-v4.6"
+    framegen_output_preset: FrameGenOutputPreset = FrameGenOutputPreset.BALANCED
 
     # --- Upscaling ---
     upscale_enabled:  bool            = False

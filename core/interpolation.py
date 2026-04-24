@@ -5,9 +5,8 @@ Frame interpolation logic.
 Supports FFmpeg minterpolate today and external RIFE when installed.
 """
 
-import shutil
-
 from core.video_job import InterpolationMode, VideoJob
+from utils.tool_paths import resolve_rife_binary
 
 
 RIFE_MODELS = [
@@ -50,4 +49,4 @@ class InterpolationEngine:
 
     @staticmethod
     def is_rife_available() -> bool:
-        return shutil.which("rife-ncnn-vulkan") is not None
+        return resolve_rife_binary() is not None

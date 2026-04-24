@@ -5,9 +5,8 @@ Upscaling logic for video jobs.
 Supports FFmpeg Lanczos and external Real-ESRGAN when installed.
 """
 
-import shutil
-
 from core.video_job import UpscaleMode, VideoJob
+from utils.tool_paths import resolve_realesrgan_binary
 
 
 UPSCALE_PRESETS = {
@@ -69,4 +68,4 @@ class UpscalingEngine:
 
     @staticmethod
     def is_realesrgan_available() -> bool:
-        return shutil.which("realesrgan-ncnn-vulkan") is not None
+        return resolve_realesrgan_binary() is not None

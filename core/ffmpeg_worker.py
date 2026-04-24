@@ -7,7 +7,6 @@ External Real-ESRGAN and RIFE paths are used when installed and selected.
 
 import logging
 import os
-import shutil
 import subprocess
 import threading
 
@@ -22,6 +21,7 @@ from core.video_job import (
     VideoJob,
 )
 from utils.file_utils import FileUtils
+from utils.tool_paths import resolve_realesrgan_binary, resolve_rife_binary
 
 log = logging.getLogger(__name__)
 
@@ -425,11 +425,15 @@ class FFmpegWorker(QThread):
     def _run_realesrgan(self, input_dir: str, output_dir: str):
         if not self.job.upscale_width or not self.job.upscale_height:
             raise ValueError("Real-ESRGAN requires a target upscale size.")
-        if shutil.which("realesrgan-ncnn-vulkan") is None:
-            raise ValueError("Real-ESRGAN is selected but 'realesrgan-ncnn-vulkan' is not available on PATH.")
+        binary_path = resolve_realesrgan_binary()
+        if binary_path is None:
+            raise ValueError(
+                "Real-ESRGAN is selected but its binary was not found. "
+                "Bundle it in ai/realesrgan/ or add it to PATH."
+            )
 
         cmd = [
-            "realesrgan-ncnn-vulkan",
+            str(binary_path),
             "-i",
             input_dir,
             "-o",
@@ -441,11 +445,23 @@ class FFmpegWorker(QThread):
             "-f",
             "png",
         ]
-        self._run_process(cmd, progress_offset=0.18, progress_scale=0.34, use_duration=False)
+        self._run_process(
+            cmd,
+            progress_offset=0.18,
+            progress_scale=0.34,
+            use_duration=False,
+            cwd=str(binary_path.parent),
+        )
 
     def _run_rife(self, input_dir: str, output_dir: str, output_pattern: str):
+        binary_path = resolve_rife_binary()
+        if binary_path is None:
+            raise ValueError(
+                "RIFE is selected but its binary was not found. "
+                "Bundle it in ai/rife/ or add it to PATH."
+            )
         cmd = [
-            "rife-ncnn-vulkan",
+            str(binary_path),
             "-i",
             input_dir,
             "-o",
@@ -455,9 +471,13 @@ class FFmpegWorker(QThread):
             "-f",
             output_pattern,
         ]
-        if shutil.which("rife-ncnn-vulkan") is None:
-            raise ValueError("RIFE is selected but 'rife-ncnn-vulkan' is not available on PATH.")
-        self._run_process(cmd, progress_offset=0.52, progress_scale=0.28, use_duration=False)
+        self._run_process(
+            cmd,
+            progress_offset=0.52,
+            progress_scale=0.28,
+            use_duration=False,
+            cwd=str(binary_path.parent),
+        )
 
     def _assemble_video_from_frames(
         self,
@@ -510,6 +530,7 @@ class FFmpegWorker(QThread):
         progress_offset: float,
         progress_scale: float,
         *,
+        cwd: str | None = None,
         use_duration: bool = True,
     ):
         duration = self.job.source_metadata.duration if (self.job.source_metadata and use_duration) else None
@@ -520,6 +541,7 @@ class FFmpegWorker(QThread):
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
+            cwd=cwd,
         )
 
         stderr_lines: list[str] = []

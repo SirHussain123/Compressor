@@ -80,7 +80,7 @@ class InterpPanel(QWidget):
                 )
             else:
                 self._info_label.setText(
-                    "RIFE is not installed. Install 'rife-ncnn-vulkan' and add it to your PATH to use higher-quality frame generation."
+                    "RIFE is not available. Bundle 'rife-ncnn-vulkan' in the app tools folder or add it to PATH to use higher-quality frame generation."
                 )
         else:
             self._info_label.setText(

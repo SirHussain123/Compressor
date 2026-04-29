@@ -1,12 +1,12 @@
-# Compressor
+# VidKomp
 
 Professional desktop video compression and enhancement tool built with Python, PyQt6, and FFmpeg.
 
-Compressor is designed for creators, editors, students, and developers who need a practical local workflow for reducing video size, changing output settings, upscaling footage, and generating smoother frame rates without relying on cloud processing. The application provides a graphical queue-based interface over FFmpeg, with optional AI-powered enhancement tools such as RIFE for frame generation and Real-ESRGAN for upscaling.
+VidKomp is designed for creators, editors, students, and developers who need a practical local workflow for reducing video size, changing output settings, upscaling footage, and generating smoother frame rates without relying on cloud processing. The application provides a graphical queue-based interface over FFmpeg, with optional AI-powered enhancement tools such as RIFE for frame generation and Real-ESRGAN for upscaling.
 
 ## Project Summary
 
-Compressor focuses on local, controllable video processing:
+VidKomp focuses on local, controllable video processing:
 
 - Batch-oriented desktop workflow with a PyQt6 user interface.
 - FFmpeg-based encoding, resizing, format conversion, audio handling, and frame extraction.
@@ -55,7 +55,7 @@ FFmpeg and ffprobe must be installed separately or bundled with the application.
 
 ## Running the Application
 
-From the `Compressor/` application directory:
+From the `VidKomp/` application directory:
 
 ```bash
 python Main.py
@@ -83,7 +83,7 @@ The app can use bundled external binaries for higher-quality enhancement, so end
 Preferred AI tool layout:
 
 ```text
-Compressor/
+VidKomp/
   ai/
     frame_generation/
       rife/
@@ -93,6 +93,7 @@ Compressor/
     upscaling/
       realesrgan/
         realesrgan-ncnn-vulkan.exe
+        README_windows.md
         *.bin
         *.param
 ```
@@ -102,7 +103,7 @@ The app checks these local folders before falling back to the system `PATH`. Leg
 ## Project Structure
 
 ```text
-Compressor/
+VidKomp/
   Main.py                  Application entry point
   Requirements.txt         Python dependencies
   README.md                Project documentation
@@ -159,7 +160,7 @@ If FFmpeg-related processing fails, confirm that:
 
 Project identity:
 
-- **Project name:** Compressor
+- **Project name:** VidKomp
 - **Application type:** desktop video compression and enhancement tool
 - **Primary implementation:** Python, PyQt6, FFmpeg integration
 - **AI enhancement support:** optional local RIFE and Real-ESRGAN integrations
@@ -169,11 +170,11 @@ Third-party technology acknowledgements:
 - **FFmpeg / ffprobe:** used for video probing, transcoding, frame extraction, filtering, and muxing.
 - **PyQt6:** used for the desktop application interface.
 - **RIFE NCNN Vulkan:** optional frame-generation backend. The bundled RIFE copy in this repository includes its own MIT license file under `ai/frame_generation/rife/LICENSE`.
-- **Real-ESRGAN NCNN Vulkan:** optional AI upscaling backend when bundled or installed separately.
+- **Real-ESRGAN NCNN Vulkan:** optional AI upscaling backend when bundled or installed separately. The currently bundled portable Windows release is `realesrgan-ncnn-vulkan-20220424-windows`, stored under the clean local folder `ai/upscaling/realesrgan/`.
 
 ## Rights and Licensing
 
-Unless a separate license file is added to this repository, the original Compressor application source code should be treated as proprietary or all-rights-reserved by the project owner. Do not redistribute, sublicense, or publish the original project source without permission from the rights holder.
+Unless a separate license file is added to this repository, the original VidKomp application source code should be treated as proprietary or all-rights-reserved by the project owner. Do not redistribute, sublicense, or publish the original project source without permission from the rights holder.
 
 Third-party components remain under their own licenses and ownership terms. Bundling or referencing a third-party binary, model, framework, or library does not transfer ownership of that component to this project.
 
@@ -192,4 +193,4 @@ Before sharing a packaged build:
 
 ## Disclaimer
 
-Compressor is provided as a local video-processing utility. Output quality, file size, encoding speed, GPU compatibility, and AI enhancement results depend on source media, selected settings, installed binaries, hardware, drivers, and model availability. Always keep backups of source videos before processing.
+VidKomp is provided as a local video-processing utility. Output quality, file size, encoding speed, GPU compatibility, and AI enhancement results depend on source media, selected settings, installed binaries, hardware, drivers, and model availability. Always keep backups of source videos before processing.

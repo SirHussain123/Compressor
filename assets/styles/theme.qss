@@ -1,4 +1,4 @@
-/* Shared theme for Compressor. Palette guided by the provided reference. */
+/* Shared theme for VidKomp. Palette guided by the provided reference. */
 
 * {
     outline: none;

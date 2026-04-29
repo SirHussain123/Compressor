@@ -53,6 +53,11 @@ def _binary_candidates(
             candidates.extend((category_root / tool_folder / name) for name in names)
             candidates.extend((category_root / f"{tool_folder}-ncnn-vulkan" / name) for name in names)
             candidates.extend((category_root / binary_name / name) for name in names)
+            candidates.extend(
+                (folder / name)
+                for folder in _matching_tool_folders(category_root, tool_folder, binary_name)
+                for name in names
+            )
 
         # Keep the previous flat ai/<tool>/ layout working for existing bundles.
         candidates.extend((ai_root / tool_folder / name) for name in names)
@@ -62,6 +67,22 @@ def _binary_candidates(
         candidates.extend((tool_root / f"{tool_folder}-ncnn-vulkan" / name) for name in names)
         candidates.extend((tool_root / binary_name / name) for name in names)
     return candidates
+
+
+def _matching_tool_folders(root: Path, tool_folder: str, binary_name: str) -> list[Path]:
+    if not root.exists():
+        return []
+
+    prefixes = (
+        tool_folder.lower(),
+        f"{tool_folder}-ncnn-vulkan".lower(),
+        binary_name.lower(),
+    )
+    return [
+        path
+        for path in root.iterdir()
+        if path.is_dir() and any(path.name.lower().startswith(prefix) for prefix in prefixes)
+    ]
 
 
 def resolve_tool_binary(

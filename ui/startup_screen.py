@@ -20,7 +20,7 @@ class StartupScreen(QWidget):
         layout.setContentsMargins(28, 28, 28, 28)
         layout.setSpacing(10)
 
-        title = QLabel("Compressor")
+        title = QLabel("VidKomp")
         title.setObjectName("startupTitle")
 
         subtitle = QLabel("Initializing workspace")

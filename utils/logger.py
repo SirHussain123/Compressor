@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 
 
-LOG_FILE = Path("compressor.log")
+LOG_FILE = Path("vidkomp.log")
 LOG_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 

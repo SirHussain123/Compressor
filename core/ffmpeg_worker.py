@@ -123,7 +123,7 @@ class FFmpegWorker(QThread):
     def _run_two_pass(self, plan: CompressionPlan):
         import tempfile
 
-        passlogfile = os.path.join(tempfile.gettempdir(), f"compressor_{id(self)}")
+        passlogfile = os.path.join(tempfile.gettempdir(), f"vidkomp_{id(self)}")
         try:
             cmd1 = self._build_two_pass_cmd(
                 plan,
@@ -176,7 +176,7 @@ class FFmpegWorker(QThread):
             self._mark_complete()
 
     def _run_external_pipeline(self):
-        temp_root = FileUtils.create_temp_dir("compressor_enhance_")
+        temp_root = FileUtils.create_temp_dir("vidkomp_enhance_")
         try:
             frame_input_dir = os.path.join(temp_root, "frames_in")
             os.makedirs(frame_input_dir, exist_ok=True)
@@ -240,7 +240,7 @@ class FFmpegWorker(QThread):
     def _run_two_pass_from_source(self, plan: CompressionPlan, input_path: str):
         import tempfile
 
-        passlogfile = os.path.join(tempfile.gettempdir(), f"compressor_{id(self)}_ext")
+        passlogfile = os.path.join(tempfile.gettempdir(), f"vidkomp_{id(self)}_ext")
         try:
             cmd1 = self._build_two_pass_cmd(
                 plan,

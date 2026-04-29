@@ -50,7 +50,7 @@ class MainWindow(QMainWindow):
         self._compression_engine = CompressionEngine()
 
         self._build_ui()
-        self.setWindowTitle("Compressor")
+        self.setWindowTitle("VidKomp")
         self.resize(980, 720)
         self.setMinimumSize(800, 560)
         self.setAcceptDrops(True)
@@ -94,7 +94,7 @@ class MainWindow(QMainWindow):
         h_layout.setContentsMargins(22, 28, 22, 22)
         h_layout.setSpacing(4)
 
-        app_title = QLabel("Compressor")
+        app_title = QLabel("VidKomp")
         app_title.setObjectName("appTitle")
         app_subtitle = QLabel("Desktop video lab")
         app_subtitle.setObjectName("appSubtitle")

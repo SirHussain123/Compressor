@@ -114,7 +114,7 @@ class UpscalePanel(QWidget):
                 )
             else:
                 self._info_label.setText(
-                    "Real-ESRGAN is not available. Bundle 'realesrgan-ncnn-vulkan' in the app tools folder or add it to PATH to use AI upscaling."
+                    "Real-ESRGAN is not available. Bundle 'realesrgan-ncnn-vulkan' in ai/upscaling/realesrgan or add it to PATH to use AI upscaling."
                 )
         else:
             self._info_label.setText(

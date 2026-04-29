@@ -77,7 +77,7 @@ class FileUtils:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def create_temp_dir(prefix: str = "compressor_") -> str:
+    def create_temp_dir(prefix: str = "vidkomp_") -> str:
         """Create and return a temporary working directory."""
         return tempfile.mkdtemp(prefix=prefix)
 

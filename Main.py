@@ -2,13 +2,15 @@ import sys
 import os
 
 from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtNetwork import QLocalServer, QLocalSocket
+from PyQt6.QtWidgets import QApplication, QMessageBox
 from utils.logger import setup_logging
 from ui.main_window import MainWindow
 from ui.startup_screen import StartupScreen
 
 # Absolute path to project root — used for loading assets
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+INSTANCE_SERVER_NAME = "VidKompSingleInstance"
 
 
 def center_on_primary_screen(widget, app: QApplication):
@@ -21,6 +23,20 @@ def center_on_primary_screen(widget, app: QApplication):
     widget.move(frame.topLeft())
 
 
+def acquire_single_instance_lock() -> QLocalServer | None:
+    socket = QLocalSocket()
+    socket.connectToServer(INSTANCE_SERVER_NAME)
+    if socket.waitForConnected(150):
+        socket.disconnectFromServer()
+        return None
+
+    QLocalServer.removeServer(INSTANCE_SERVER_NAME)
+    server = QLocalServer()
+    if not server.listen(INSTANCE_SERVER_NAME):
+        return None
+    return server
+
+
 def main():
     setup_logging()
 
@@ -31,6 +47,12 @@ def main():
     if os.path.exists(qss_path):
         with open(qss_path, "r") as f:
             app.setStyleSheet(f.read())
+
+    instance_server = acquire_single_instance_lock()
+    if instance_server is None:
+        QMessageBox.information(None, "VidKomp", "the app is running")
+        sys.exit(0)
+    instance_server.newConnection.connect(lambda: instance_server.nextPendingConnection().deleteLater())
 
     splash = StartupScreen()
     center_on_primary_screen(splash, app)

@@ -183,18 +183,22 @@ class FFmpegWorker(QThread):
             frame_pattern = "frame_%08d.png"
 
             self._extract_frames(self.job.input_path, frame_input_dir, frame_pattern)
+            source_frame_count = self._count_frames(frame_input_dir)
 
             if self.job.upscale_mode == UpscaleMode.REAL_ESRGAN:
                 frame_output_dir = os.path.join(temp_root, "frames_upscaled")
                 os.makedirs(frame_output_dir, exist_ok=True)
                 self._run_realesrgan(frame_input_dir, frame_output_dir)
                 frame_input_dir = frame_output_dir
+                source_frame_count = self._count_frames(frame_input_dir)
 
             if self.job.interpolation_mode == InterpolationMode.RIFE_2X:
                 frame_output_dir = os.path.join(temp_root, "frames_interpolated")
                 os.makedirs(frame_output_dir, exist_ok=True)
                 frame_pattern = "%08d.png"
                 self._run_rife(frame_input_dir, frame_output_dir, frame_pattern)
+                interpolated_frame_count = self._count_frames(frame_output_dir)
+                self._validate_rife_output(source_frame_count, interpolated_frame_count)
                 frame_input_dir = frame_output_dir
 
             assemble_filters = self._external_pipeline_filters()
@@ -504,7 +508,7 @@ class FFmpegWorker(QThread):
         ):
             vf.append(f"scale={job.target_width}:{job.target_height}:flags=lanczos")
 
-        if job.target_fps:
+        if job.target_fps and job.interpolation_mode != InterpolationMode.RIFE_2X:
             vf.append(f"fps={job.target_fps}")
         return vf
 
@@ -515,6 +519,36 @@ class FFmpegWorker(QThread):
         if job.source_metadata:
             return job.source_metadata.fps
         return 30.0
+
+    @staticmethod
+    def _count_frames(frames_dir: str) -> int:
+        valid_exts = {".png", ".jpg", ".jpeg", ".webp"}
+        try:
+            return sum(
+                1
+                for name in os.listdir(frames_dir)
+                if os.path.splitext(name)[1].lower() in valid_exts
+            )
+        except FileNotFoundError:
+            return 0
+
+    @staticmethod
+    def _validate_rife_output(source_frame_count: int, output_frame_count: int):
+        if source_frame_count <= 0:
+            raise RuntimeError("RIFE input frame extraction produced no frames.")
+        if output_frame_count <= source_frame_count:
+            raise RuntimeError(
+                "RIFE did not increase the frame count. "
+                f"Input frames: {source_frame_count}, output frames: {output_frame_count}."
+            )
+        expected = source_frame_count * 2
+        if output_frame_count < expected - 2:
+            log.warning(
+                "RIFE output frame count is lower than expected. Input=%s Output=%s Expected~=%s",
+                source_frame_count,
+                output_frame_count,
+                expected,
+            )
 
     def _can_stream_copy_video(self) -> bool:
         return (

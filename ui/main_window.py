@@ -30,6 +30,7 @@ from core.video_job import InterpolationMode, JobStatus, SizeMode, UpscaleMode, 
 from core.video_probe import VideoProbe
 from ui.advanced_settings import AdvancedSettingsPanel
 from ui.basic_settings import BasicSettingsPanel
+from ui.compare_page import ComparePage
 from ui.file_drop_widget import FileDropWidget
 from ui.job_list_widget import JobListWidget
 from ui.system_panel import SystemPanel
@@ -71,6 +72,9 @@ class MainWindow(QMainWindow):
 
         self._stack = QStackedWidget()
         self._stack.addWidget(self._make_process_page())
+        self._compare_page = ComparePage()
+        self._compare_page.status_message.connect(self._status_bar_message)
+        self._stack.addWidget(self._compare_page)
         self._stack.addWidget(self._make_settings_page())
         self._stack.addWidget(self._make_system_page())
         root.addWidget(self._stack)
@@ -109,7 +113,7 @@ class MainWindow(QMainWindow):
         layout.addSpacing(12)
 
         self._nav_buttons: list[QPushButton] = []
-        nav_items = (("Process", 0), ("Settings", 1), ("System", 2))
+        nav_items = (("Process", 0), ("Compare", 1), ("Settings", 2), ("System", 3))
         for label, idx in nav_items:
             btn = NavButton(label)
             btn.setObjectName("navButton")
@@ -152,6 +156,9 @@ class MainWindow(QMainWindow):
         globalf = QPointF(QCursor.pos())
         QApplication.sendEvent(widget, QEnterEvent(posf, globalf, globalf))
         widget.update()
+
+    def _status_bar_message(self, message: str):
+        self._status_bar.showMessage(message)
 
     def _make_process_page(self) -> QWidget:
         page = QWidget()
